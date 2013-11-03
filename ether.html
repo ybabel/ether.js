@@ -1,31 +1,243 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html class="js" xml:lang="en" xmlns="http://www.w3.org/1999/xhtml" lang="en"><head>
 
 
-<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-<title>Yoann Babel Virtual Ether</title>
-<base href="file:///media/OPTIMA/ether.html"></head>
-<body>
-<div align="center">
-Parabolic mirror generate planar wave (laser)
-  <br clear="all">
-  TimeStep : <input id="timestep" value="100" onchange="stop(); start();"  size="5"> Damp : <input id="damp" value="0.95" onchange="change();"  size="5"> PushForce : <input id="push" value="16.0" onchange="change();" size="5">Preselected :<select onchange="preselect(this.value);">
-  <option value="nothing"> Nothing </option>
-  <option value="magnets"> Tick : 2 Magnets </option>
-  <option value="bounding"> Tick : Bouding borders </option>
-  <option value="oscillator"> Tick : 2 Oscillators </option>
-  <option value="swamp"> Init : Ether damping + fluidity </option>
-  <option value="someclicks1"> Init : Some clicks 1 </option>
-  <option value="someclicks2"> Init : Some clicks 2 </option>
-  <option value="laser"> Tick : Laser generator </option>
-  <option value="closebox"> Tick : Close the ether box </option>
-  <option value="lens"> Init : parabolic lens emiter </option>
-  <option value="pmirror"> Tick : parabolic mirror </option>
-  <option value="plaser1"> Tick : Parabolic Laser generator 1</option>
-  <option value="plaser2"> Tick : Parabolic Laser generator 2 </option>
-</select>
-<br/>Init :
-  <textarea id="swamp" type="hidden" style="display: none;">
+<!DOCTYPE html>
+<html lang="en">
+   <head>
+      <meta charset="UTF-8">
+      <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+      <title>Editor</title>
+      <style type="text/css" media="screen">  
+         #editor {    
+         width: 100%;
+         height: 400px;
+         }
+      </style>
+   </head>
+   <body>
+      <div id="editor"></div>
+      <input name="save" value="Dowload" onclick="save();" type="button">
+      <input name="localsave" value="Local Save" onclick="saveLocal();" type="button">
+      <input name="localClear" value="Local Clear" onclick="clearLocal();" type="button">
+      <div id="main" align="center">
+         <script type="text/javascript">
+            function Simulator(width, height) { 
+              this.damp = new Array(width * height);
+              this.fluid = new Array(width * height);
+              this.ether = new Array(width * height);
+              this.buffer = new Array(width * height);
+            
+              this.getdamp = function (x, y) {
+                return (x >= 0 && x < width && y >= 0 && y < height)
+                  ? this.damp[y * width + x] : 0.0;
+              }
+            
+              this.getfluid = function (x, y) {
+                return (x >= 0 && x < width && y >= 0 && y < height)
+                  ? this.fluid[y * width + x] : 0.0;
+              }
+            
+              this.getbuffer = function (x, y) {
+                return (x >= 0 && x < width && y >= 0 && y < height)
+                  ? this.buffer[y * width + x] : 0.0;
+              }
+            
+              this.getether = function (x, y) {
+                return (x >= 0 && x < width && y >= 0 && y < height)
+                  ? this.ether[y * width + x] : 0.0;
+              }
+            
+              this.setether = function (x, y, value) { return this.ether[y * width + x] = value; }
+              this.setbuffer = function (x, y, value) { return this.buffer[y * width + x] = value; }
+              this.setdamp = function (x, y, value) { return this.damp[y * width + x] = value; }
+              this.setfluid = function (x, y, value) { return this.fluid[y * width + x] = value; }
+            
+              this.initenv = function (getfluid, getdamp) { 
+                for (var y = height - 1; y >= 0; y--) {
+                  for (var x = width - 1; x >= 0; x--) {
+                    if (getfluid != null) this.setfluid(x, y, getfluid(x,y));
+                    if (getdamp != null) this.setdamp(x, y, getdamp(x,y));
+                  }
+                }
+              }
+            
+              this.clear = function () {
+                for (var offset = this.ether.length - 1; offset >= 0; offset--) {
+                  this.ether[offset] = 0.0;
+                  this.fluid[offset] = 0.0;
+                  this.damp[offset] = 1.0;
+                  this.buffer[offset] = 0.0;
+                }
+              }
+            
+              this.compute = function()   {
+                for (var y = height - 1; y >= 0; y--) {
+                  for (var x = width - 1; x >= 0; x--) {
+                    var f = this.getfluid(x,y);
+            	var d = this.getdamp(x,y);
+                    var v = ( this.buffer_neighboor(x, y) * (2.0-f) - (1.0-f)*this.getether(x,y) ) *d;
+                    this.setether(x,y, v)
+                  }
+                }
+              }
+            
+              this.compute_O1 = function()   {
+                for (var y = height - 1; y >= 0; y--) {
+                  for (var x = width - 1; x >= 0; x--) {
+                    var ofs = x+y*width;
+                    var f = this.fluid[ofs];
+            	var d = this.damp[ofs];
+                    var v = ( this.buffer_neighboor_O1(ofs, x, y) * (2.0-f) - (1.0-f)*this.ether[ofs] ) *d;
+                    this.ether[ofs] = v;
+                  }
+                }
+              }
+            
+              this.h_absorber = function (a, b, y, dir)  { // dir is 1 or -1
+                for (var x = a; x >= b; x--) {
+            	var d = this.getdamp(x,y+dir);
+            	var v = this.getbuffer(x,y+dir); 
+            	this.setether(x,y,v*d); 
+                    if (y> 0 && y < height-1) this.setether(x,y-dir,0);
+                }
+              }
+            
+              this.v_absorber = function (a, b, x, dir)  { // dir is 1 or -1
+                for (var y = a; y >= b; y--) {
+            	var d = this.getdamp(x+dir,y);
+            	var v = this.getbuffer(x+dir,y); 
+            	this.setether(x,y,v*d); 
+                    if (x> 0 && x < width-1) this.setether(x-dir,y,0);
+                }
+              }
+            
+              this.swap = function() {
+                var tmp = this.buffer;
+                this.buffer = this.ether;
+                this.ether = tmp;
+              }
+            
+              this.cellwidth = function (canvas) { return Math.floor(canvas.width / width); }
+              this.cellheight = function (canvas) { return  Math.floor(canvas.height / height); }
+            
+              this.getcolor = function (x,y) {
+                var v = this.getether(x,y);
+                return v>0 ? "rgb("+Math.floor(v*255)+",0,0)" : "rgb(0,0,"+Math.floor(v*-255)+")";
+              }
+            
+              this.draw = function (canvas, draw_grid) {
+                var ctx = canvas.getContext('2d');
+                var cwidth = this.cellwidth(canvas);
+                var cheight = this.cellheight(canvas);
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, cwidth * width, cheight * height);
+                for (var y = height - 1; y >= 0; y--) {
+                  var offset = y * width;
+                  for (var x = width - 1; x >= 0; x--) {
+            	  if (Math.abs(this.getether(x,y)) < 0.1)
+                        ctx.fillStyle = "rgb(0,"+Math.floor(this.getdamp(x,y)*64)+","+Math.floor(this.getfluid(x,y)*64)+")";
+            	  else
+                        ctx.fillStyle = this.getcolor(x,y);
+                      ctx.fillRect(x * cwidth, y * cheight, cwidth, cheight);
+                  }
+                }
+                if (draw_grid) {
+                  ctx.fillStyle = 'grey';
+                  for (var y = 0; y <= height; y++) {
+                    ctx.fillRect(0, y * cheight, cwidth * width, 1);
+                    for (var x = 0; x <= width; x++) {
+                      ctx.fillRect(x * cwidth, 0, 1, cheight * height);
+                    }
+                  }
+                }
+              }
+            
+              this.draw_O1 = function (canvas, draw_grid) {
+                var ctx = canvas.getContext('2d');
+                var cwidth = this.cellwidth(canvas);
+                var cheight = this.cellheight(canvas);
+                for (var y = height - 1; y >= 0; y--) {
+                  for (var x = width - 1; x >= 0; x--) {
+                      var ofs = x+y * width;
+                      var v = this.ether[ofs];
+            	  if (Math.abs(v) < 0.05)
+                        ctx.fillStyle = "rgb(0,"+Math.floor(this.damp[ofs]*64)+","+Math.floor(this.fluid[ofs]*64)+")";
+            	  else
+                        ctx.fillStyle = v>0 ? "rgb("+Math.floor(v*255)+",0,0)" : "rgb(0,0,"+Math.floor(v*-255)+")";;
+                      ctx.fillRect(x * cwidth, y * cheight, cwidth, cheight);
+                  }
+                }
+              }
+            
+              this.buffer_neighboor = function(x, y) {
+                return (this.getbuffer(x+1, y) + this.getbuffer(x, y+1) + this.getbuffer(x-1, y) + this.getbuffer(x, y-1))/4.0;
+              }
+            
+              this.buffer_neighboor_O1 = function(ofs, x, y) {
+                if (x==0 || y==0 || x==width-1 || y==height-1) return this.buffer_neighboor(x, y);
+                return (this.buffer[ofs+1] + this.buffer[ofs+width] + this.buffer[ofs-1] + this.buffer[ofs-width])/4.0;
+              }
+            
+              this.simulclick = function(x, y, c) {
+                var v = c-this.getether(x,y);
+                this.setether(x,y, v);
+                var v = c-this.getbuffer(x,y);
+                this.setbuffer(x,y, v);
+              }
+            
+              this.setvalue = function(x, y, v) {
+                this.setether(x,y, v);
+                this.setbuffer(x,y, v);
+              }
+            
+              this.click = function(e, canvas) {
+                var x = Math.floor((e.clientX-canvas.offsetLeft)/this.cellwidth(canvas));
+                var y = Math.floor((e.clientY-canvas.offsetTop)/this.cellheight(canvas));
+                this.simulclick(x,y, force);
+              }
+            
+              this.setclick= function(canvas) {
+                var self=this;
+                var drag = false;
+                canvas.addEventListener("mousedown", function(e) { drag = true; }, false);
+                canvas.addEventListener("mouseup", function(e) { drag = false; self.click(e, canvas); }, false);
+                canvas.addEventListener("mousemove", 
+            	function(e) { 
+            		if (! drag) return;
+            		self.click(e, canvas);
+            	}, false);
+              }
+            
+              this.inverse = function() {
+                for (var offset = this.ether.length - 1; offset >= 0; offset--) {
+                  var tmp = this.ether[offset];
+                  this.ether[offset] = this.buffer[offset];
+                  this.buffer[offset] = tmp;
+                }
+              }
+            
+              this.clear();
+            }
+         </script>
+         Parabolic mirror generate planar wave (laser)
+         <br clear="all">
+         TimeStep : <input id="timestep" value="100" onchange="stop(); start();"  size="5"> Damp : <input id="damp" value="0.95" onchange="change();"  size="5"> PushForce : <input id="push" value="16.0" onchange="change();" size="5">Preselected :
+         <select onchange="preselect(this.value);">
+            <option value="nothing"> Nothing </option>
+            <option value="magnets"> Tick : 2 Magnets </option>
+            <option value="bounding"> Tick : Bouding borders </option>
+            <option value="oscillator"> Tick : 2 Oscillators </option>
+            <option value="swamp"> Init : Ether damping + fluidity </option>
+            <option value="someclicks1"> Init : Some clicks 1 </option>
+            <option value="someclicks2"> Init : Some clicks 2 </option>
+            <option value="laser"> Tick : Laser generator </option>
+            <option value="closebox"> Tick : Close the ether box </option>
+            <option value="lens"> Init : parabolic lens emiter </option>
+            <option value="pmirror"> Tick : parabolic mirror </option>
+            <option value="plaser1"> Tick : Parabolic Laser generator 1</option>
+            <option value="plaser2"> Tick : Parabolic Laser generator 2 </option>
+         </select>
+         <br/>Init :
+         <textarea id="swamp" type="hidden" style="display: none;">
     simulator.initenv(
       function (x,y) {
         var fluid = 0.0; // 0 = fuild, 1 = visqueux
@@ -38,9 +250,10 @@ Parabolic mirror generate planar wave (laser)
 	return damp;
       });
   </textarea>
-  <textarea id="init" cols="100" rows="5">
-  </textarea><br/>Each step :
-  <textarea id="tick" cols="100" rows="5">
+         <textarea id="init" cols="100" rows="5">
+  </textarea>
+         <br/>Each step :
+         <textarea id="tick" cols="100" rows="5">
 p=24; d=16; pX=4; pY=25;
 if (time < p*4/3) 
   simulator.setether(p+pX, pY, Math.sin(time*2/3)*8);
@@ -54,309 +267,145 @@ simulator.v_absorber(gridY -1, 0, 0, 1);
 simulator.v_absorber(gridY -1, 0, gridX-1, -1);
 simulator.h_absorber(gridX-1, 0, 0, 1);
 simulator.h_absorber(gridX-1, 0, gridY-1, -1);  
-      </textarea><br/>
-  <input name="reset" value="Reset" onclick="reset();" type="button">
-  <input name="start" value="Start" onclick="start();" type="button">
-  <input name="stop" value="Stop" onclick="stop();" type="button">
-  <input name="step" value="Step" onclick="step();" type="button">
-  <input name="goback" value="Back" onclick="goback();" type="button">
-  <br clear="all">
-  <canvas id="canvas" width="501" height="261" style="background: transparent url(virtual-ether.png) repeat scroll 0% 0%; -moz-background-clip: -moz-initial; -moz-background-origin: -moz-initial; -moz-background-inline-policy: -moz-initial; -moz-opaque:true;">
-    <div id="empty"></div>
-  </canvas>
+      </textarea>
+         <br/>
+         <input name="init" value="Init" onclick="initAll();" type="button">
+         <input name="reset" value="Reset" onclick="reset();" type="button">
+         <input name="start" value="Start" onclick="start();" type="button">
+         <input name="stop" value="Stop" onclick="stop();" type="button">
+         <input name="step" value="Step" onclick="step();" type="button">
+         <input name="goback" value="Back" onclick="goback();" type="button">
+         <br clear="all">
+         <canvas id="canvas" width="501" height="261" style="background: transparent url(virtual-ether.png) repeat scroll 0% 0%; -moz-background-clip: -moz-initial; -moz-background-origin: -moz-initial; -moz-background-inline-policy: -moz-initial; -moz-opaque:true;">
+            <div id="empty"></div>
+         </canvas>
+         <br clear="all">
+         <script type="text/javascript">
+            function initAll() {  
+              timer_id = 0;
+              size=5;
+              force = 0;
+              time = 0; // time
+              canvas = document.getElementById('canvas');
+              gridX = (canvas.width - 1) / size;
+              gridY = (canvas.height - 1) / size;
+              simulator = new Simulator(gridX, gridY);
+            
+              canvas.mozOpaque = true; 
+              simulator.setclick(canvas);
+              simulator.draw(canvas);
+              change(); // retrieve global value of force and damping
+            }
+            initAll();
+            
+            function preselect(kind) {
+              var magnets = "if (time % 1==0) { simulator.setvalue(36,20, force);  }\nif (time % 1==0) { simulator.setvalue(10+(Math.floor(time/16))%25,5, force);  }";
+              var bounding = "simulator.h_absorber(gridX -1, 0, 0, 1); \nsimulator.v_absorber(gridY -1, 0, 0, 1);";
+              var oscillator = "if (time % 1==0) { simulator.simulclick(36,5, force); }\nif (time % 1==0) { simulator.simulclick(10,5, force); }";
+              var swamp = document.getElementById("swamp").value;
+              var someclicks1 = "simulator.simulclick(12,2, force);\nsimulator.simulclick(37,2, force);\nsimulator.simulclick(25,14, force);";
+              var someclicks2 = "simulator.simulclick(12,2, force);\nsimulator.simulclick(37,23, force);";
+              var laser = "for (var j=10; j<15; j++)  if (time % 15==0) { simulator.setether(5,j, force);  }\nfor (var i=0; i < 25; i++) {  simulator.setether(i,9,0); simulator.setether(i, 15, 0);}";
+              var closebox = "simulator.v_absorber(gridY -1, 0, 0, 1);\nsimulator.v_absorber(gridY -1, 0, gridX-1, -1);\nsimulator.h_absorber(gridX-1, 0, 0, 1);\nsimulator.h_absorber(gridX-1, 0, gridY-1, -1);";
+              var lens = "for (y=0; y<16; y+=0.01) {\nx = (y-8) * (y-8)/8;\nsimulator.setether(Math.round(x)+2, Math.round(y)+10, 1);\n}";
+              var pmirror = "for (y=0; y<=16.0; y+=0.01) { x = (y-8) * (y-8)/8; simulator.setether(Math.round(x)+1, Math.round(y)+20, 0); }";
+              var plaser1 = "if (time % 7 == 0)\n  for (y=-8; y<=8.0; y+=1) \n    simulator.setether(11, Math.round(y)+12, 1);\nfor (y=0; y<=16.0; y+=0.01) {\n  x = (y-8) * (y-8)/8;\n  simulator.setether(Math.round(x)+2, Math.round(y)+4, 0);\n}";
+              var plaser2 = "if (time % 7 == 0)\n  simulator.setether(4, 12, 1);\nfor (y=0; y<=16.0; y+=0.01) {\n  x = (y-8) * (y-8)/8;\n  simulator.setether(Math.round(x)+2, Math.round(y)+4, 0);\n}";
+            
+              switch (kind) {
+                case "nothing" : document.getElementById("init").value = ""; document.getElementById("tick").value = ""; break;
+                case "magnets" : document.getElementById("tick").value += "\n"+magnets; break;
+                case "bounding" : document.getElementById("tick").value += "\n"+bounding; break;
+                case "oscillator" : document.getElementById("tick").value += "\n"+oscillator; break;
+                case "swamp" : document.getElementById("init").value += "\n"+swamp; break;
+                case "someclicks1" : document.getElementById("init").value += "\n"+someclicks1; break;
+                case "someclicks2" : document.getElementById("init").value += "\n"+someclicks2; break;
+                case "laser" : document.getElementById("tick").value += "\n"+laser; break;
+                case "closebox" : document.getElementById("tick").value += "\n"+closebox; break;
+                case "lens" : document.getElementById("init").value += "\n"+lens; break;
+                case "pmirror" : document.getElementById("tick").value += "\n"+pmirror; break;
+                case "plaser1" : document.getElementById("tick").value += "\n"+plaser1; break;
+                case "plaser2" : document.getElementById("tick").value += "\n"+plaser2; break;
+              }
+            }
+            function init() {
+              eval(document.getElementById("init").value);
+            }
+            function change() {
+              force = document.getElementById('push').value - 0.0;
+              simulator.initenv(null, 
+                function (x,y) {
+            return document.getElementById('damp').value;
+                });
+            }
+            function simulate() {
+              simulator.compute_O1();
+              eval(document.getElementById("tick").value);
+              simulator.swap();
+              simulator.draw_O1(canvas);
+              time += 1;
+            }
+            function reset() {
+              time=0;
+              simulator.clear();
+              change();
+              init();
+              simulate()
+            }
+            function start() {
+              if (timer_id == 0) {
+                simulate();
+                var timestep = document.getElementById('timestep').value;
+                timer_id = window.setInterval('simulate()', timestep);
+              }
+            }
+            function stop() {
+              if (timer_id != 0) {
+                window.clearInterval(timer_id);
+                timer_id = 0;
+              }
+            }
+            function step() {
+              simulate();
+            }
+            function goback() {
+              simulator.inverse();
+            }
+            reset();
+            
+         </script>
+      </div>
+      <script src="ace/src-noconflict/ace.js" type="text/javascript" charset="utf-8"></script>
+      <script src="filesaver/FileSaver.js" type="text/javascript" charset="utf-8"></script>
+      <script src="blob/Blob.js" type="text/javascript" charset="utf-8"></script>
+      <script>
+         if (localStorage.getItem('contenteditable')) {
+            document.getElementById('main').innerHTML = localStorage.getItem('contenteditable');
+         }
+         
+         var editor = ace.edit("editor");
+         editor.getSession().setMode("ace/mode/javascript");
+         editor.setTheme("ace/theme/twilight");
+         editor.setValue(document.getElementById('main').innerHTML);
+         editor.getSession().on('change', function(e) {
+           document.getElementById('main').innerHTML = editor.getValue();
+         });
+         
+         function saveLocal() {
+            localStorage.setItem('contenteditable', document.getElementById('main').innerHTML);
+         }
+ 
+         function clearLocal() {
+            localStorage.clear();
+         }
+         
+         function save() {
+            var markup = document.documentElement.innerHTML;
+            var blob = new Blob([markup], {type: "text/plain;charset=utf-8"});
+            saveAs(blob, "ether.html");
+         }
+      </script>
+   </body>
+</html>
 
-  <br clear="all">
-</div>
 
-<script type="text/javascript">
-<!--
-  var timer_id = 0;
-  var size=5;
-  var force = 0;
-  var time = 0; // time
-  
-  var canvas = document.getElementById('canvas');
-  canvas.mozOpaque = true;
-  var gridX = (canvas.width - 1) / size;
-  var gridY = (canvas.height - 1) / size;
-  var simulator = new Simulator(gridX, gridY);
-  simulator.setclick(canvas);
-  simulator.draw(canvas);
-  change(); // retrieve global value of force and damping
-
-  function preselect(kind) {
-    var magnets = "if (time % 1==0) { simulator.setvalue(36,20, force);  }\nif (time % 1==0) { simulator.setvalue(10+(Math.floor(time/16))%25,5, force);  }";
-    var bounding = "simulator.h_absorber(gridX -1, 0, 0, 1); \nsimulator.v_absorber(gridY -1, 0, 0, 1);";
-    var oscillator = "if (time % 1==0) { simulator.simulclick(36,5, force); }\nif (time % 1==0) { simulator.simulclick(10,5, force); }";
-    var swamp = document.getElementById("swamp").value;
-    var someclicks1 = "simulator.simulclick(12,2, force);\nsimulator.simulclick(37,2, force);\nsimulator.simulclick(25,14, force);";
-    var someclicks2 = "simulator.simulclick(12,2, force);\nsimulator.simulclick(37,23, force);";
-    var laser = "for (var j=10; j<15; j++)  if (time % 15==0) { simulator.setether(5,j, force);  }\nfor (var i=0; i < 25; i++) {  simulator.setether(i,9,0); simulator.setether(i, 15, 0);}";
-    var closebox = "simulator.v_absorber(gridY -1, 0, 0, 1);\nsimulator.v_absorber(gridY -1, 0, gridX-1, -1);\nsimulator.h_absorber(gridX-1, 0, 0, 1);\nsimulator.h_absorber(gridX-1, 0, gridY-1, -1);";
-    var lens = "for (y=0; y<16; y+=0.01) {\nx = (y-8) * (y-8)/8;\nsimulator.setether(Math.round(x)+2, Math.round(y)+10, 1);\n}";
-    var pmirror = "for (y=0; y<=16.0; y+=0.01) { x = (y-8) * (y-8)/8; simulator.setether(Math.round(x)+1, Math.round(y)+20, 0); }";
-    var plaser1 = "if (time % 7 == 0)\n  for (y=-8; y<=8.0; y+=1) \n    simulator.setether(11, Math.round(y)+12, 1);\nfor (y=0; y<=16.0; y+=0.01) {\n  x = (y-8) * (y-8)/8;\n  simulator.setether(Math.round(x)+2, Math.round(y)+4, 0);\n}";
-    var plaser2 = "if (time % 7 == 0)\n  simulator.setether(4, 12, 1);\nfor (y=0; y<=16.0; y+=0.01) {\n  x = (y-8) * (y-8)/8;\n  simulator.setether(Math.round(x)+2, Math.round(y)+4, 0);\n}";
-
-    switch (kind) {
-      case "nothing" : document.getElementById("init").value = ""; document.getElementById("tick").value = ""; break;
-      case "magnets" : document.getElementById("tick").value += "\n"+magnets; break;
-      case "bounding" : document.getElementById("tick").value += "\n"+bounding; break;
-      case "oscillator" : document.getElementById("tick").value += "\n"+oscillator; break;
-      case "swamp" : document.getElementById("init").value += "\n"+swamp; break;
-      case "someclicks1" : document.getElementById("init").value += "\n"+someclicks1; break;
-      case "someclicks2" : document.getElementById("init").value += "\n"+someclicks2; break;
-      case "laser" : document.getElementById("tick").value += "\n"+laser; break;
-      case "closebox" : document.getElementById("tick").value += "\n"+closebox; break;
-      case "lens" : document.getElementById("init").value += "\n"+lens; break;
-      case "pmirror" : document.getElementById("tick").value += "\n"+pmirror; break;
-      case "plaser1" : document.getElementById("tick").value += "\n"+plaser1; break;
-      case "plaser2" : document.getElementById("tick").value += "\n"+plaser2; break;
-    }
-  }
-  function init() {
-    eval(document.getElementById("init").value);
-  }
-  function change() {
-    force = document.getElementById('push').value - 0.0;
-    simulator.initenv(null, 
-      function (x,y) {
-	return document.getElementById('damp').value;
-      });
-  }
-  function simulate() {
-    simulator.compute_O1();
-    eval(document.getElementById("tick").value);
-    simulator.swap();
-    simulator.draw_O1(canvas);
-    time += 1;
-  }
-  function reset() {
-    time=0;
-    simulator.clear();
-    change();
-    init();
-    simulate()
-  }
-  function start() {
-    if (timer_id == 0) {
-      simulate();
-      var timestep = document.getElementById('timestep').value;
-      timer_id = window.setInterval('simulate()', timestep);
-    }
-  }
-  function stop() {
-    if (timer_id != 0) {
-      window.clearInterval(timer_id);
-      timer_id = 0;
-    }
-  }
-  function step() {
-    simulate();
-  }
-  function goback() {
-    simulator.inverse();
-  }
-  reset();
-
-function Simulator(width, height) { 
-  this.damp = new Array(width * height);
-  this.fluid = new Array(width * height);
-  this.ether = new Array(width * height);
-  this.buffer = new Array(width * height);
-
-  this.getdamp = function (x, y) {
-    return (x >= 0 && x < width && y >= 0 && y < height)
-      ? this.damp[y * width + x] : 0.0;
-  }
-
-  this.getfluid = function (x, y) {
-    return (x >= 0 && x < width && y >= 0 && y < height)
-      ? this.fluid[y * width + x] : 0.0;
-  }
-
-  this.getbuffer = function (x, y) {
-    return (x >= 0 && x < width && y >= 0 && y < height)
-      ? this.buffer[y * width + x] : 0.0;
-  }
-
-  this.getether = function (x, y) {
-    return (x >= 0 && x < width && y >= 0 && y < height)
-      ? this.ether[y * width + x] : 0.0;
-  }
-
-  this.setether = function (x, y, value) { return this.ether[y * width + x] = value; }
-  this.setbuffer = function (x, y, value) { return this.buffer[y * width + x] = value; }
-  this.setdamp = function (x, y, value) { return this.damp[y * width + x] = value; }
-  this.setfluid = function (x, y, value) { return this.fluid[y * width + x] = value; }
-
-  this.initenv = function (getfluid, getdamp) { 
-    for (var y = height - 1; y >= 0; y--) {
-      for (var x = width - 1; x >= 0; x--) {
-        if (getfluid != null) this.setfluid(x, y, getfluid(x,y));
-        if (getdamp != null) this.setdamp(x, y, getdamp(x,y));
-      }
-    }
-  }
-
-  this.clear = function () {
-    for (var offset = this.ether.length - 1; offset >= 0; offset--) {
-      this.ether[offset] = 0.0;
-      this.fluid[offset] = 0.0;
-      this.damp[offset] = 1.0;
-      this.buffer[offset] = 0.0;
-    }
-  }
-
-  this.compute = function()   {
-    for (var y = height - 1; y >= 0; y--) {
-      for (var x = width - 1; x >= 0; x--) {
-        var f = this.getfluid(x,y);
-	var d = this.getdamp(x,y);
-        var v = ( this.buffer_neighboor(x, y) * (2.0-f) - (1.0-f)*this.getether(x,y) ) *d;
-        this.setether(x,y, v)
-      }
-    }
-  }
-
-  this.compute_O1 = function()   {
-    for (var y = height - 1; y >= 0; y--) {
-      for (var x = width - 1; x >= 0; x--) {
-        var ofs = x+y*width;
-        var f = this.fluid[ofs];
-	var d = this.damp[ofs];
-        var v = ( this.buffer_neighboor_O1(ofs, x, y) * (2.0-f) - (1.0-f)*this.ether[ofs] ) *d;
-        this.ether[ofs] = v;
-      }
-    }
-  }
-
-  this.h_absorber = function (a, b, y, dir)  { // dir is 1 or -1
-    for (var x = a; x >= b; x--) {
-	var d = this.getdamp(x,y+dir);
-	var v = this.getbuffer(x,y+dir); 
-	this.setether(x,y,v*d); 
-        if (y> 0 && y < height-1) this.setether(x,y-dir,0);
-    }
-  }
-
-  this.v_absorber = function (a, b, x, dir)  { // dir is 1 or -1
-    for (var y = a; y >= b; y--) {
-	var d = this.getdamp(x+dir,y);
-	var v = this.getbuffer(x+dir,y); 
-	this.setether(x,y,v*d); 
-        if (x> 0 && x < width-1) this.setether(x-dir,y,0);
-    }
-  }
-
-  this.swap = function() {
-    var tmp = this.buffer;
-    this.buffer = this.ether;
-    this.ether = tmp;
-  }
-
-  this.cellwidth = function (canvas) { return Math.floor(canvas.width / width); }
-  this.cellheight = function (canvas) { return  Math.floor(canvas.height / height); }
-
-  this.getcolor = function (x,y) {
-    var v = this.getether(x,y);
-    return v>0 ? "rgb("+Math.floor(v*255)+",0,0)" : "rgb(0,0,"+Math.floor(v*-255)+")";
-  }
-
-  this.draw = function (canvas, draw_grid) {
-    var ctx = canvas.getContext('2d');
-    var cwidth = this.cellwidth(canvas);
-    var cheight = this.cellheight(canvas);
-    ctx.fillStyle = 'white';
-    ctx.fillRect(0, 0, cwidth * width, cheight * height);
-    for (var y = height - 1; y >= 0; y--) {
-      var offset = y * width;
-      for (var x = width - 1; x >= 0; x--) {
-	  if (Math.abs(this.getether(x,y)) < 0.1)
-            ctx.fillStyle = "rgb(0,"+Math.floor(this.getdamp(x,y)*64)+","+Math.floor(this.getfluid(x,y)*64)+")";
-	  else
-            ctx.fillStyle = this.getcolor(x,y);
-          ctx.fillRect(x * cwidth, y * cheight, cwidth, cheight);
-      }
-    }
-    if (draw_grid) {
-      ctx.fillStyle = 'grey';
-      for (var y = 0; y <= height; y++) {
-        ctx.fillRect(0, y * cheight, cwidth * width, 1);
-        for (var x = 0; x <= width; x++) {
-          ctx.fillRect(x * cwidth, 0, 1, cheight * height);
-        }
-      }
-    }
-  }
-
-  this.draw_O1 = function (canvas, draw_grid) {
-    var ctx = canvas.getContext('2d');
-    var cwidth = this.cellwidth(canvas);
-    var cheight = this.cellheight(canvas);
-    for (var y = height - 1; y >= 0; y--) {
-      for (var x = width - 1; x >= 0; x--) {
-          var ofs = x+y * width;
-          var v = this.ether[ofs];
-	  if (Math.abs(v) < 0.05)
-            ctx.fillStyle = "rgb(0,"+Math.floor(this.damp[ofs]*64)+","+Math.floor(this.fluid[ofs]*64)+")";
-	  else
-            ctx.fillStyle = v>0 ? "rgb("+Math.floor(v*255)+",0,0)" : "rgb(0,0,"+Math.floor(v*-255)+")";;
-          ctx.fillRect(x * cwidth, y * cheight, cwidth, cheight);
-      }
-    }
-  }
-
-  this.buffer_neighboor = function(x, y) {
-    return (this.getbuffer(x+1, y) + this.getbuffer(x, y+1) + this.getbuffer(x-1, y) + this.getbuffer(x, y-1))/4.0;
-  }
-
-  this.buffer_neighboor_O1 = function(ofs, x, y) {
-    if (x==0 || y==0 || x==width-1 || y==height-1) return this.buffer_neighboor(x, y);
-    return (this.buffer[ofs+1] + this.buffer[ofs+width] + this.buffer[ofs-1] + this.buffer[ofs-width])/4.0;
-  }
-
-  this.simulclick = function(x, y, c) {
-    var v = c-this.getether(x,y);
-    this.setether(x,y, v);
-    var v = c-this.getbuffer(x,y);
-    this.setbuffer(x,y, v);
-  }
-
-  this.setvalue = function(x, y, v) {
-    this.setether(x,y, v);
-    this.setbuffer(x,y, v);
-  }
-
-  this.click = function(e, canvas) {
-    var x = Math.floor((e.clientX-canvas.offsetLeft)/this.cellwidth(canvas));
-    var y = Math.floor((e.clientY-canvas.offsetTop)/this.cellheight(canvas));
-    this.simulclick(x,y, force);
-  }
-
-  this.setclick= function(canvas) {
-    var self=this;
-    var drag = false;
-    canvas.addEventListener("mousedown", function(e) { drag = true; }, false);
-    canvas.addEventListener("mouseup", function(e) { drag = false; self.click(e, canvas); }, false);
-    canvas.addEventListener("mousemove", 
-	function(e) { 
-		if (! drag) return;
-		self.click(e, canvas);
-	}, false);
-  }
-
-  this.inverse = function() {
-    for (var offset = this.ether.length - 1; offset >= 0; offset--) {
-      var tmp = this.ether[offset];
-      this.ether[offset] = this.buffer[offset];
-      this.buffer[offset] = tmp;
-    }
-  }
-
-  this.clear();
-}
-//-->
-</script>
-
-</body></html>

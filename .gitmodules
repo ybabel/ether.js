@@ -1,0 +1,9 @@
+[submodule "filesaver"]
+	path = filesaver
+	url = https://github.com/eligrey/FileSaver.js.git
+[submodule "blob"]
+	path = blob
+	url = https://github.com/eligrey/Blob.js.git
+[submodule "ace"]
+	path = ace
+	url = https://github.com/ajaxorg/ace-builds.git
