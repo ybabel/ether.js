@@ -4,7 +4,6 @@
 
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <title>Yoann Babel Virtual Ether</title>
-<base href="file:///media/OPTIMA/ether.html"></head>
 <body>
 <div align="center">
 Parabolic mirror generate planar wave (laser)
@@ -23,6 +22,8 @@ Parabolic mirror generate planar wave (laser)
   <option value="pmirror"> Tick : parabolic mirror </option>
   <option value="plaser1"> Tick : Parabolic Laser generator 1</option>
   <option value="plaser2"> Tick : Parabolic Laser generator 2 </option>
+  <option value="plaser3"> Tick : Parabolic Laser generator 3 </option>
+  <option value="ocean"> Init : Ocean with 4 regions </option>
 </select>
 <br/>Init :
   <textarea id="swamp" type="hidden" style="display: none;">
@@ -97,6 +98,8 @@ simulator.h_absorber(gridX-1, 0, gridY-1, -1);
     var pmirror = "for (y=0; y<=16.0; y+=0.01) { x = (y-8) * (y-8)/8; simulator.setether(Math.round(x)+1, Math.round(y)+20, 0); }";
     var plaser1 = "if (time % 7 == 0)\n  for (y=-8; y<=8.0; y+=1) \n    simulator.setether(11, Math.round(y)+12, 1);\nfor (y=0; y<=16.0; y+=0.01) {\n  x = (y-8) * (y-8)/8;\n  simulator.setether(Math.round(x)+2, Math.round(y)+4, 0);\n}";
     var plaser2 = "if (time % 7 == 0)\n  simulator.setether(4, 12, 1);\nfor (y=0; y<=16.0; y+=0.01) {\n  x = (y-8) * (y-8)/8;\n  simulator.setether(Math.round(x)+2, Math.round(y)+4, 0);\n}";
+    var plaser3 = "simulator.v_absorber(gridY -1, 0, 0, 1);\nsimulator.v_absorber(gridY -1, 0, gridX-1, -1);\nsimulator.h_absorber(gridX-1, 0, 0, 1);\nsimulator.h_absorber(gridX-1, 0, gridY-1, -1);\nYY = 20;\nif (time % 7 == 0)\n  for (y=-8; y<=8.0; y+=1) \n    simulator.setether(11, Math.round(y)+YY, 1);\nfor (y=-12; y<=12.0; y+=0.01) {\n  x = (y) * (y)/8;\n  simulator.setether(Math.round(x)+2, Math.round(y)+YY, 0);\n}";
+    var ocean = "    simulator.initenv(\n      function (x,y) {\n        if (y<25) return 0;\n	return 0.5;\n      },\n      function (x,y) {\n        var damp = document.getElementById('damp').value;\n        if (x<50) damp=0.95\n	return damp;\n      });";
 
     switch (kind) {
       case "nothing" : document.getElementById("init").value = ""; document.getElementById("tick").value = ""; break;
@@ -112,6 +115,8 @@ simulator.h_absorber(gridX-1, 0, gridY-1, -1);
       case "pmirror" : document.getElementById("tick").value += "\n"+pmirror; break;
       case "plaser1" : document.getElementById("tick").value += "\n"+plaser1; break;
       case "plaser2" : document.getElementById("tick").value += "\n"+plaser2; break;
+      case "plaser3" : document.getElementById("tick").value += "\n"+plaser3; break;
+      case "ocean" : document.getElementById("init").value += "\n"+ocean; break;
     }
   }
   function init() {
