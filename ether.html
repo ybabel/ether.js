@@ -25,6 +25,7 @@ Parabolic mirror generate planar wave (laser)
   <option value="plaser3"> Tick : Parabolic Laser generator 3 </option>
   <option value="ocean"> Init : Ocean with 4 regions </option>
 </select>
+Entropy : <input id="entropy" value="0.0" size="5">
 <br/>Init :
   <textarea id="swamp" type="hidden" style="display: none;">
     simulator.initenv(
@@ -134,6 +135,7 @@ simulator.h_absorber(gridX-1, 0, gridY-1, -1);
     eval(document.getElementById("tick").value);
     simulator.swap();
     simulator.draw_O1(canvas);
+    document.getElementById('entropy').value = simulator.entropy();
     time += 1;
   }
   function reset() {
@@ -357,6 +359,23 @@ function Simulator(width, height) {
       this.ether[offset] = this.buffer[offset];
       this.buffer[offset] = tmp;
     }
+  }
+
+  this.entropy = function() {
+    var bytes = new Array(256); var sum = 0; var plogp=0;
+    for (var offset = this.ether.length - 1; offset >= 0; offset--) {
+      var value = Math.floor(255*(this.ether[offset]+1)/2);
+      sum += value;
+      if (bytes[value]) bytes[value]++; else bytes[value]=1;
+    }
+    for (i=0; i<256; i++) {
+      if (bytes[i]) {
+        var p = bytes[i] / this.ether.length;
+        plogp -= p * Math.log(p);
+      }
+    }
+    plogp /= Math.log(2);
+    return plogp;
   }
 
   this.clear();
