@@ -25,7 +25,8 @@ Parabolic mirror generate planar wave (laser)
   <option value="plaser3"> Tick : Parabolic Laser generator 3 </option>
   <option value="ocean"> Init : Ocean with 4 regions </option>
 </select>
-Entropy : <input id="entropy" value="0.0" size="5">
+
+Entropy :  <INPUT type="checkbox" name="entropycheck" id="entropycheck" value="true"> <input id="entropy" value="0.0" size="5">
 <br/>Init :
   <textarea id="swamp" type="hidden" style="display: none;">
     simulator.initenv(
@@ -41,22 +42,10 @@ Entropy : <input id="entropy" value="0.0" size="5">
       });
   </textarea>
   <textarea id="init" cols="100" rows="5">
+dtws.add(10,10, 200, 3, 0.1,0);
   </textarea><br/>Each step :
   <textarea id="tick" cols="100" rows="5">
-p=24; d=16; pX=4; pY=25;
-if (time < p*4/3) 
-  simulator.setether(p+pX, pY, Math.sin(time*2/3)*8);
-if (time < p*3) 
-  simulator.v_absorber(pY+d, pY-d, p+pX+1, -1);
-for (y=-d; y<=d; y+=0.01) {
-  x = (y*y)/(4*p);
-  simulator.setether(Math.round(x)+pX, Math.round(y)+pY, 0);
-}
-simulator.v_absorber(gridY -1, 0, 0, 1);
-simulator.v_absorber(gridY -1, 0, gridX-1, -1);
-simulator.h_absorber(gridX-1, 0, 0, 1);
-simulator.h_absorber(gridX-1, 0, gridY-1, -1);  
-      </textarea><br/>
+  </textarea><br/>
   <input name="reset" value="Reset" onclick="reset();" type="button">
   <input name="start" value="Start" onclick="start();" type="button">
   <input name="stop" value="Stop" onclick="stop();" type="button">
@@ -244,7 +233,45 @@ var CanvasChart = function () {
 
 
 
-
+function dotwave (x,y,w,p, vx,vy) {
+  this.x = x;
+  this.y = y;
+  this.w = w;
+  this.p = p;
+  this.vx = vx;
+  this.vy = vy;
+  
+  this.move = function() {
+    this.x+=this.vx;
+    this.y+=this.vy;
+  }
+  
+  this.bounce = function (simulator, time) {
+    if ((time % p) == 0)
+      simulator.simulclick(Math.round(this.x),Math.round(this.y),this.w);
+  }
+}
+ 
+function dotwaves (simulator) {
+  this.simul = simulator;
+  this.dotwaves = [];
+  
+  this.reset = function() {
+    this.dotwaves = [];
+  }
+  
+  this.step = function(time) {
+    for (var i=0; i<this.dotwaves.length; i++) {
+      var dw = this.dotwaves[i];
+      dw.move();
+      dw.bounce(this.simul, time);
+    }
+  }
+  
+  this.add = function(x,y,w,p, vx,vy) {
+    this.dotwaves.push(new dotwave(x,y,w,p,vx,vy));
+  }
+}
 
 
 
@@ -274,17 +301,11 @@ var CanvasChart = function () {
   var simulator = new Simulator(gridX, gridY);
   simulator.setclick(canvas);
   simulator.draw(canvas);
+  var dtws = new dotwaves(simulator);
   change(); // retrieve global value of force and damping
-             var dataDef = { title: "Entropy Chart",
-                            xLabel: 'Time', 
-                            yLabel: 'Entropy',
-                            labelFont: '19pt Arial', 
-                            dataPointFont: '10pt Arial',
-                            renderTypes: [CanvasChart.renderType.lines],
-                            dataPoints: [{ x: 0, y: 0 }]
-                           };
-  
-
+  var dataDef = { title: "Entropy Chart", xLabel: 'Time', yLabel: 'Entropy', labelFont: '19pt Arial', dataPointFont: '10pt Arial',
+                renderTypes: [CanvasChart.renderType.lines],
+                dataPoints: [{ x: 0, y: 0 }]};
 
   function preselect(kind) {
     var magnets = "if (time % 1==0) { simulator.setvalue(36,20, force);  }\nif (time % 1==0) { simulator.setvalue(10+(Math.floor(time/16))%25,5, force);  }";
@@ -301,6 +322,7 @@ var CanvasChart = function () {
     var plaser2 = "if (time % 7 == 0)\n  simulator.setether(4, 12, 1);\nfor (y=0; y<=16.0; y+=0.01) {\n  x = (y-8) * (y-8)/8;\n  simulator.setether(Math.round(x)+2, Math.round(y)+4, 0);\n}";
     var plaser3 = "simulator.v_absorber(gridY -1, 0, 0, 1);\nsimulator.v_absorber(gridY -1, 0, gridX-1, -1);\nsimulator.h_absorber(gridX-1, 0, 0, 1);\nsimulator.h_absorber(gridX-1, 0, gridY-1, -1);\nYY = 20;\nif (time % 7 == 0)\n  for (y=-8; y<=8.0; y+=1) \n    simulator.setether(11, Math.round(y)+YY, 1);\nfor (y=-12; y<=12.0; y+=0.01) {\n  x = (y) * (y)/8;\n  simulator.setether(Math.round(x)+2, Math.round(y)+YY, 0);\n}";
     var ocean = "    simulator.initenv(\n      function (x,y) {\n        if (y<25) return 0;\n	return 0.5;\n      },\n      function (x,y) {\n        var damp = document.getElementById('damp').value;\n        if (x<50) damp=0.95\n	return damp;\n      });";
+    var plaser4 = "p=24; d=16; pX=4; pY=25; \nif (time < p*4/3) \n  simulator.setether(p+pX, pY, Math.sin(time*2/3)*8);\nif (time < p*3) \n  simulator.v_absorber(pY+d, pY-d, p+pX+1, -1);\nfor (y=-d; y<=d; y+=0.01) {\n  x = (y*y)/(4*p);\n  simulator.setether(Math.round(x)+pX, Math.round(y)+pY, 0);\n}\nsimulator.v_absorber(gridY -1, 0, 0, 1);\nsimulator.v_absorber(gridY -1, 0, gridX-1, -1);\nsimulator.h_absorber(gridX-1, 0, 0, 1);\nsimulator.h_absorber(gridX-1, 0, gridY-1, -1); ";
 
     switch (kind) {
       case "nothing" : document.getElementById("init").value = ""; document.getElementById("tick").value = ""; break;
@@ -318,6 +340,7 @@ var CanvasChart = function () {
       case "plaser2" : document.getElementById("tick").value += "\n"+plaser2; break;
       case "plaser3" : document.getElementById("tick").value += "\n"+plaser3; break;
       case "ocean" : document.getElementById("init").value += "\n"+ocean; break;
+      case "plaser4" : document.getElementById("tick").value += "\n"+plaser4; break;
     }
   }
   function init() {
@@ -331,6 +354,9 @@ var CanvasChart = function () {
       });
   }
   function simulate() {
+    
+    dtws.step(time);
+    
     simulator.compute_O1();
     eval(document.getElementById("tick").value);
     simulator.swap();
@@ -343,11 +369,14 @@ var CanvasChart = function () {
 
     simulator.draw_O1(canvas);
     dataDef.dataPoints.push({ x: time, y:  e});
-    if (time % timestep == 0)
-      CanvasChart.render('chart', dataDef);
+    //if (time % timestep == 0) {
+      if (document.getElementById('entropycheck').checked)
+        CanvasChart.render('chart', dataDef);
+    //}    
   }
   function reset() {
     time=0;
+    dtws.reset();
     dataDef.dataPoints = [{ x: 0, y: 0 }];
     simulator.clear();
     change();
@@ -373,7 +402,10 @@ var CanvasChart = function () {
   function goback() {
     simulator.inverse();
   }
-  reset();
+  reset();7
+  
+  
+  
 
 function Simulator(width, height) { 
   this.damp = new Array(width * height);
