@@ -8,7 +8,7 @@
 <div align="center">
 Parabolic mirror generate planar wave (laser)
   <br clear="all">
-  TimeStep : <input id="timestep" value="100" onchange="stop(); start();"  size="5"> Damp : <input id="damp" value="0.95" onchange="change();"  size="5"> PushForce : <input id="push" value="16.0" onchange="change();" size="5">Preselected :<select onchange="preselect(this.value);">
+  TimeStep : <input id="timestep" value="100" onchange="stop(); start();"  size="2"> Damp : <input id="damp" value="0.95" onchange="change();"  size="2"> Velocity Factor : <input id="velocity" value="2" onchange="change();"  size="2"> PushForce : <input id="pushforce" value="16.0" onchange="change();" size="2">Preselected :<select onchange="preselect(this.value);">
   <option value="nothing"> Nothing </option>
   <option value="magnets"> Tick : 2 Magnets </option>
   <option value="bounding"> Tick : Bouding borders </option>
@@ -32,20 +32,23 @@ Entropy :  <INPUT type="checkbox" name="entropycheck" id="entropycheck" value="t
     simulator.initenv(
       function (x,y) {
         var fluid = 0.0; // 0 = fuild, 1 = visqueux
-	if (x > 35) fluid = 1.0;
-	return fluid;
+      	if (x > 35) fluid = 1.0;
+      	return fluid;
       },
       function (x,y) {
         var damp = document.getElementById('damp').value;
-	if (x < 10) { if (y < 10) { damp = 0; } else damp = 0.5; }
-	return damp;
+      	if (x < 10) { if (y < 10) { damp = 0; } else damp = 0.5; }
+      	return damp;
       });
   </textarea>
-  <textarea id="init" cols="100" rows="5">
-dtws.add(10,10, 200, 3, 0.1,0);
-  </textarea><br/>Each step :
-  <textarea id="tick" cols="100" rows="5">
-  </textarea><br/>
+  <textarea id="init" cols="50" rows="5">
+dtws.add(15,15, 0.5, 3, 0,0);
+  </textarea>
+  Each step :
+  <textarea id="tick" cols="50" rows="5">
+  </textarea>
+  <span id="tablearea"></span>
+  <br/>
   <input name="reset" value="Reset" onclick="reset();" type="button">
   <input name="start" value="Start" onclick="start();" type="button">
   <input name="stop" value="Stop" onclick="stop();" type="button">
@@ -233,13 +236,18 @@ var CanvasChart = function () {
 
 
 
-function dotwave (x,y,w,p, vx,vy) {
+function dotwave (i, x,y,w,p, vx,vy) {
+  this.i = i;
   this.x = x;
   this.y = y;
   this.w = w;
   this.p = p;
-  this.vx = vx;
-  this.vy = vy;
+  this.vxi = vx;
+  this.vyi = vy;
+  this.vx = 0;
+  this.vy = 0;
+  this.gp = 0;
+  this.lastime = 0;
   
   this.move = function() {
     this.x+=this.vx;
@@ -247,14 +255,37 @@ function dotwave (x,y,w,p, vx,vy) {
   }
   
   this.bounce = function (simulator, time) {
-    if ((time % p) == 0)
-      simulator.simulclick(Math.round(this.x),Math.round(this.y),this.w);
+    var x = Math.round(this.x);
+    var y = Math.round(this.y);
+    if (simulator.ismax(x,y) || time == 0) {
+      simulator.setether(x,y,this.w); 
+      simulator.setbuffer(x,y,this.w); 
+      //simulator.simulclick(x,y,this.w); 
+    }
+    //if ((time % p) == 0)
+    //  simulator.simulclick(x,y,this.w);
+    if (simulator.signchange(x,y)) {
+      a = simulator.fastnormal(x,y);
+      this.vx = this.vxi+a.dx/velocityfactor;
+      this.vy = this.vyi+a.dy/velocityfactor;
+    }
+  }
+  
+  this.computeperiod = function (simulator, time) {
+    var x = Math.round(this.x);
+    var y = Math.round(this.y);
+    if (simulator.ismax(x,y)) {
+      this.gp = time-this.lastime;
+      this.lastime = time;
+    }
   }
 }
  
 function dotwaves (simulator) {
   this.simul = simulator;
   this.dotwaves = [];
+  this.table = null;
+  this.columns = ['i', 'x', 'y', 'vx', 'vy', 'gp'];
   
   this.reset = function() {
     this.dotwaves = [];
@@ -264,12 +295,50 @@ function dotwaves (simulator) {
     for (var i=0; i<this.dotwaves.length; i++) {
       var dw = this.dotwaves[i];
       dw.move();
+      dw.computeperiod(this.simul, time);
       dw.bounce(this.simul, time);
     }
   }
   
   this.add = function(x,y,w,p, vx,vy) {
-    this.dotwaves.push(new dotwave(x,y,w,p,vx,vy));
+    this.dotwaves.push(new dotwave(this.dotwaves.length, x,y,w,p,vx,vy));
+  }
+  
+  this.createtable = function(id) {
+    var tablearea = document.getElementById(id);
+    while( tablearea.firstChild ) {
+      tablearea.removeChild( tablearea.firstChild ); 
+    }
+    this.table = document.createElement('table');
+    var tr = document.createElement('tr');
+    for (var i=0; i<this.columns.length; i++) {
+      var td = document.createElement('td');
+      var text = document.createTextNode(this.columns[i]);
+      td.appendChild(text);
+      tr.appendChild(td);
+    }
+    this.table.appendChild(tr);
+    for (var i = 0; i < this.dotwaves.length; i++){
+      var tr = document.createElement('tr');   
+      for (var j = 0; j<this.columns.length; j++){
+        var td = document.createElement('td');
+        var val = this.dotwaves[i][this.columns[j]];
+        var text = document.createTextNode(val);
+        td.appendChild(text);
+        tr.appendChild(td);
+      }
+      this.table.appendChild(tr);
+    }           
+    tablearea.appendChild(this.table);    
+  }
+  
+  this.updatetable = function() {
+    for (var i = 0; i < this.dotwaves.length; i++){
+      for (var j = 0; j<this.columns.length; j++){
+        var val = this.dotwaves[i][this.columns[j]];
+        this.table.rows[i+1].cells[j].innerHTML = val.toFixed(1);
+      }
+    }           
   }
 }
 
@@ -290,7 +359,8 @@ function dotwaves (simulator) {
   var timer_id = 0;
   var timestep = 100;
   var size=5;
-  var force = 0;
+  var pushforce = 0;
+  var velocityfactor = 1;
   var time = 0; // time
   
   var canvas = document.getElementById('canvas');
@@ -308,13 +378,13 @@ function dotwaves (simulator) {
                 dataPoints: [{ x: 0, y: 0 }]};
 
   function preselect(kind) {
-    var magnets = "if (time % 1==0) { simulator.setvalue(36,20, force);  }\nif (time % 1==0) { simulator.setvalue(10+(Math.floor(time/16))%25,5, force);  }";
+    var magnets = "if (time % 1==0) { simulator.setvalue(36,20, pushforce);  }\nif (time % 1==0) { simulator.setvalue(10+(Math.floor(time/16))%25,5, pushforce);  }";
     var bounding = "simulator.h_absorber(gridX -1, 0, 0, 1); \nsimulator.v_absorber(gridY -1, 0, 0, 1);";
-    var oscillator = "if (time % 1==0) { simulator.simulclick(36,5, force); }\nif (time % 1==0) { simulator.simulclick(10,5, force); }";
+    var oscillator = "if (time % 1==0) { simulator.simulclick(36,5, pushforce); }\nif (time % 1==0) { simulator.simulclick(10,5, pushforce); }";
     var swamp = document.getElementById("swamp").value;
-    var someclicks1 = "simulator.simulclick(12,2, force);\nsimulator.simulclick(37,2, force);\nsimulator.simulclick(25,14, force);";
-    var someclicks2 = "simulator.simulclick(12,2, force);\nsimulator.simulclick(37,23, force);";
-    var laser = "for (var j=10; j<15; j++)  if (time % 15==0) { simulator.setether(5,j, force);  }\nfor (var i=0; i < 25; i++) {  simulator.setether(i,9,0); simulator.setether(i, 15, 0);}";
+    var someclicks1 = "simulator.simulclick(12,2, pushforce);\nsimulator.simulclick(37,2, pushforce);\nsimulator.simulclick(25,14, pushforce);";
+    var someclicks2 = "simulator.simulclick(12,2, pushforce);\nsimulator.simulclick(37,23, pushforce);";
+    var laser = "for (var j=10; j<15; j++)  if (time % 15==0) { simulator.setether(5,j, pushforce);  }\nfor (var i=0; i < 25; i++) {  simulator.setether(i,9,0); simulator.setether(i, 15, 0);}";
     var closebox = "simulator.v_absorber(gridY -1, 0, 0, 1);\nsimulator.v_absorber(gridY -1, 0, gridX-1, -1);\nsimulator.h_absorber(gridX-1, 0, 0, 1);\nsimulator.h_absorber(gridX-1, 0, gridY-1, -1);";
     var lens = "for (y=0; y<16; y+=0.01) {\nx = (y-8) * (y-8)/8;\nsimulator.setether(Math.round(x)+2, Math.round(y)+10, 1);\n}";
     var pmirror = "for (y=0; y<=16.0; y+=0.01) { x = (y-8) * (y-8)/8; simulator.setether(Math.round(x)+1, Math.round(y)+20, 0); }";
@@ -345,17 +415,20 @@ function dotwaves (simulator) {
   }
   function init() {
     eval(document.getElementById("init").value);
+    dtws.createtable('tablearea');
   }
   function change() {
-    force = document.getElementById('push').value - 0.0;
+    pushforce = document.getElementById('pushforce').value - 0.0;
+    velocityfactor = document.getElementById('velocity').value - 0.0;
     simulator.initenv(null, 
       function (x,y) {
-	return document.getElementById('damp').value;
+        return document.getElementById('damp').value;
       });
   }
   function simulate() {
     
     dtws.step(time);
+    dtws.updatetable();
     
     simulator.compute_O1();
     eval(document.getElementById("tick").value);
@@ -460,7 +533,7 @@ function Simulator(width, height) {
     for (var y = height - 1; y >= 0; y--) {
       for (var x = width - 1; x >= 0; x--) {
         var f = this.getfluid(x,y);
-	var d = this.getdamp(x,y);
+        var d = this.getdamp(x,y);
         var v = ( this.buffer_neighboor(x, y) * (2.0-f) - (1.0-f)*this.getether(x,y) ) *d;
         this.setether(x,y, v)
       }
@@ -472,7 +545,7 @@ function Simulator(width, height) {
       for (var x = width - 1; x >= 0; x--) {
         var ofs = x+y*width;
         var f = this.fluid[ofs];
-	var d = this.damp[ofs];
+	      var d = this.damp[ofs];
         var v = ( this.buffer_neighboor_O1(ofs, x, y) * (2.0-f) - (1.0-f)*this.ether[ofs] ) *d;
         this.ether[ofs] = v;
       }
@@ -481,19 +554,19 @@ function Simulator(width, height) {
 
   this.h_absorber = function (a, b, y, dir)  { // dir is 1 or -1
     for (var x = a; x >= b; x--) {
-	var d = this.getdamp(x,y+dir);
-	var v = this.getbuffer(x,y+dir); 
-	this.setether(x,y,v*d); 
-        if (y> 0 && y < height-1) this.setether(x,y-dir,0);
+      var d = this.getdamp(x,y+dir);
+      var v = this.getbuffer(x,y+dir); 
+      this.setether(x,y,v*d); 
+      if (y> 0 && y < height-1) this.setether(x,y-dir,0);
     }
   }
 
   this.v_absorber = function (a, b, x, dir)  { // dir is 1 or -1
     for (var y = a; y >= b; y--) {
-	var d = this.getdamp(x+dir,y);
-	var v = this.getbuffer(x+dir,y); 
-	this.setether(x,y,v*d); 
-        if (x> 0 && x < width-1) this.setether(x-dir,y,0);
+      var d = this.getdamp(x+dir,y);
+      var v = this.getbuffer(x+dir,y); 
+      this.setether(x,y,v*d); 
+      if (x> 0 && x < width-1) this.setether(x-dir,y,0);
     }
   }
 
@@ -520,11 +593,11 @@ function Simulator(width, height) {
     for (var y = height - 1; y >= 0; y--) {
       var offset = y * width;
       for (var x = width - 1; x >= 0; x--) {
-	  if (Math.abs(this.getether(x,y)) < 0.1)
-            ctx.fillStyle = "rgb(0,"+Math.floor(this.getdamp(x,y)*64)+","+Math.floor(this.getfluid(x,y)*64)+")";
-	  else
-            ctx.fillStyle = this.getcolor(x,y);
-          ctx.fillRect(x * cwidth, y * cheight, cwidth, cheight);
+        if (Math.abs(this.getether(x,y)) < 0.1)
+          ctx.fillStyle = "rgb(0,"+Math.floor(this.getdamp(x,y)*64)+","+Math.floor(this.getfluid(x,y)*64)+")";
+        else
+          ctx.fillStyle = this.getcolor(x,y);
+        ctx.fillRect(x * cwidth, y * cheight, cwidth, cheight);
       }
     }
     if (draw_grid) {
@@ -546,9 +619,9 @@ function Simulator(width, height) {
       for (var x = width - 1; x >= 0; x--) {
           var ofs = x+y * width;
           var v = this.ether[ofs];
-	  if (Math.abs(v) < 0.05)
+          if (Math.abs(v) < 0.05)
             ctx.fillStyle = "rgb(0,"+Math.floor(this.damp[ofs]*64)+","+Math.floor(this.fluid[ofs]*64)+")";
-	  else
+          else
             ctx.fillStyle = v>0 ? "rgb("+Math.floor(v*255)+",0,0)" : "rgb(0,0,"+Math.floor(v*-255)+")";;
           ctx.fillRect(x * cwidth, y * cheight, cwidth, cheight);
       }
@@ -562,6 +635,22 @@ function Simulator(width, height) {
   this.buffer_neighboor_O1 = function(ofs, x, y) {
     if (x==0 || y==0 || x==width-1 || y==height-1) return this.buffer_neighboor(x, y);
     return (this.buffer[ofs+1] + this.buffer[ofs+width] + this.buffer[ofs-1] + this.buffer[ofs-width])/4.0;
+  }
+  
+  this.fastnormal = function(x,y) {
+    dx = this.getether(x-1, y+1)-this.getether(x+1, y+1) + 2*(this.getether(x-1, y)-this.getether(x+1, y)) + this.getether(x-1, y-1)-this.getether(x+1, y-1);
+    dy = this.getether(x-1, y-1)-this.getether(x-1, y+1) + 2*(this.getether(x, y-1)-this.getether(x, y+1)) + this.getether(x+1, y-1)-this.getether(x+1, y+1);
+    return {dx: dx, dy: dy};
+  }
+  
+  this.ismax = function(x,y) {
+    if (this.getether(x,y) > 0)
+      return (this.getether(x,y) < this.getbuffer(x,y));
+  }
+  
+  this.signchange = function(x,y) {
+    sign = this.getether(x,y) * this.getbuffer(x,y);
+    return sign <= 0;
   }
 
   this.simulclick = function(x, y, c) {
@@ -579,7 +668,7 @@ function Simulator(width, height) {
   this.click = function(e, canvas) {
     var x = Math.floor((e.clientX-canvas.offsetLeft)/this.cellwidth(canvas));
     var y = Math.floor((e.clientY-canvas.offsetTop)/this.cellheight(canvas));
-    this.simulclick(x,y, force);
+    this.simulclick(x,y, pushforce);
   }
 
   this.setclick= function(canvas) {
@@ -588,10 +677,10 @@ function Simulator(width, height) {
     canvas.addEventListener("mousedown", function(e) { drag = true; }, false);
     canvas.addEventListener("mouseup", function(e) { drag = false; self.click(e, canvas); }, false);
     canvas.addEventListener("mousemove", 
-	function(e) { 
-		if (! drag) return;
-		self.click(e, canvas);
-	}, false);
+      function(e) { 
+        if (! drag) return;
+        self.click(e, canvas);
+      }, false);
   }
 
   this.inverse = function() {
