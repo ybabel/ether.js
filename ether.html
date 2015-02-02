@@ -8,7 +8,7 @@
 <div align="center">
 Parabolic mirror generate planar wave (laser)
   <br clear="all">
-  TimeStep : <input id="timestep" value="100" onchange="stop(); start();"  size="2"> Damp : <input id="damp" value="0.95" onchange="change();"  size="2"> Velocity Factor : <input id="velocity" value="2" onchange="change();"  size="2"> PushForce : <input id="pushforce" value="16.0" onchange="change();" size="2">Preselected :<select onchange="preselect(this.value);">
+  TimeStep : <input id="timestep" value="100" onchange="stop(); start();"  size="2"> Damp : <input id="damp" value="0.9" onchange="change();"  size="2"> Velocity Factor : <input id="velocity" value="4" onchange="change();"  size="2"> PushForce : <input id="pushforce" value="2" onchange="change();" size="2">Preselected :<select onchange="preselect(this.value);">
   <option value="nothing"> Nothing </option>
   <option value="magnets"> Tick : 2 Magnets </option>
   <option value="bounding"> Tick : Bouding borders </option>
@@ -26,7 +26,8 @@ Parabolic mirror generate planar wave (laser)
   <option value="ocean"> Init : Ocean with 4 regions </option>
 </select>
 
-Entropy :  <INPUT type="checkbox" name="entropycheck" id="entropycheck" value="true"> <input id="entropy" value="0.0" size="5">
+Entropy :  <INPUT type="checkbox" name="entropycheck" id="entropycheck" value="true"> <input id="entropy" value="0.0" size="3">
+Timer :  <input id="timer" value="0" size="3">
 <br/>Init :
   <textarea id="swamp" type="hidden" style="display: none;">
     simulator.initenv(
@@ -42,7 +43,8 @@ Entropy :  <INPUT type="checkbox" name="entropycheck" id="entropycheck" value="t
       });
   </textarea>
   <textarea id="init" cols="50" rows="5">
-dtws.add(15,15, 0.5, 3, 0,0);
+dtws.add(15,15, 1, 4, 0.5,0);
+dtws.add(25,19, 1, 4, -0.5,0);
   </textarea>
   Each step :
   <textarea id="tick" cols="50" rows="5">
@@ -52,7 +54,7 @@ dtws.add(15,15, 0.5, 3, 0,0);
   <input name="reset" value="Reset" onclick="reset();" type="button">
   <input name="start" value="Start" onclick="start();" type="button">
   <input name="stop" value="Stop" onclick="stop();" type="button">
-  <input name="step" value="Step" onclick="step();" type="button">
+  <input name="step" value="Step" onclick="goforward();" type="button">
   <input name="goback" value="Back" onclick="goback();" type="button">
   <br clear="all">
   <canvas id="canvas" width="501" height="261" style="background: transparent url(virtual-ether.png) repeat scroll 0% 0%; -moz-background-clip: -moz-initial; -moz-background-origin: -moz-initial; -moz-background-inline-policy: -moz-initial; -moz-opaque:true;">
@@ -66,181 +68,134 @@ dtws.add(15,15, 0.5, 3, 0,0);
 
 <script type="text/javascript">
 <!--
-// CANVAS CHART
-var CanvasChart = function () {
-    var ctx;
-    var margin = { top: 40, left: 75, right: 0, bottom: 75 };
-    var chartHeight, chartWidth, yMax, xMax, data;
-    var maxYValue = 0;
-    var ratio = 0;
-    var renderType = { lines: 'lines', points: 'points' };
 
-    var render = function(canvasId, dataObj) {
-        data = dataObj;
-        getMaxDataYValue();
-        var canvas = document.getElementById(canvasId);
-        chartHeight = canvas.getAttribute('height');
-        chartWidth = canvas.getAttribute('width');
-        xMax = chartWidth - (margin.left + margin.right);
-        yMax = chartHeight - (margin.top + margin.bottom);
-        ratio = yMax / maxYValue;
-        ctx = canvas.getContext("2d");
-        ctx.clearRect ( 0 , 0 , canvas.width, canvas.height );
-        renderChart();
-    };
+  var timer_id = 0;
+  var timestep = 100;
+  var size=5;
+  var pushforce = 0;
+  var velocityfactor = 1;
+  var time = 0; // time
+  
+  var canvaschart = new CanvasChart();
+  var canvas = document.getElementById('canvas');
+  var entropyHist = [{ x: '0', y: 0 }];
+  canvas.mozOpaque = true;
+  var gridX = (canvas.width - 1) / size;
+  var gridY = (canvas.height - 1) / size;
+  var simulator = new Simulator(gridX, gridY);
+  simulator.setclick(canvas);
+  simulator.draw(canvas);
+  var dtws = new dotwaves(simulator);
+  change(); // retrieve global value of force and damping
+  var dataDef = { title: "Entropy Chart", xLabel: 'Time', yLabel: 'Entropy', labelFont: '19pt Arial', dataPointFont: '10pt Arial',
+                renderTypes: [canvaschart.renderType.lines],
+                dataPoints: [{ x: 0, y: 0 }]};
 
-    var renderChart = function () {
-        renderBackground();
-        renderText();
-        renderLinesAndLabels();
+  function preselect(kind) {
+    var magnets = "if (time % 1==0) { simulator.setvalue(36,20, pushforce);  }\nif (time % 1==0) { simulator.setvalue(10+(Math.floor(time/16))%25,5, pushforce);  }";
+    var bounding = "simulator.h_absorber(gridX -1, 0, 0, 1); \nsimulator.v_absorber(gridY -1, 0, 0, 1);";
+    var oscillator = "if (time % 1==0) { simulator.simulclick(36,5, pushforce); }\nif (time % 1==0) { simulator.simulclick(10,5, pushforce); }";
+    var swamp = document.getElementById("swamp").value;
+    var someclicks1 = "simulator.simulclick(12,2, pushforce);\nsimulator.simulclick(37,2, pushforce);\nsimulator.simulclick(25,14, pushforce);";
+    var someclicks2 = "simulator.simulclick(12,2, pushforce);\nsimulator.simulclick(37,23, pushforce);";
+    var laser = "for (var j=10; j<15; j++)  if (time % 15==0) { simulator.setether(5,j, pushforce);  }\nfor (var i=0; i < 25; i++) {  simulator.setether(i,9,0); simulator.setether(i, 15, 0);}";
+    var closebox = "simulator.v_absorber(gridY -1, 0, 0, 1);\nsimulator.v_absorber(gridY -1, 0, gridX-1, -1);\nsimulator.h_absorber(gridX-1, 0, 0, 1);\nsimulator.h_absorber(gridX-1, 0, gridY-1, -1);";
+    var lens = "for (y=0; y<16; y+=0.01) {\nx = (y-8) * (y-8)/8;\nsimulator.setether(Math.round(x)+2, Math.round(y)+10, 1);\n}";
+    var pmirror = "for (y=0; y<=16.0; y+=0.01) { x = (y-8) * (y-8)/8; simulator.setether(Math.round(x)+1, Math.round(y)+20, 0); }";
+    var plaser1 = "if (time % 7 == 0)\n  for (y=-8; y<=8.0; y+=1) \n    simulator.setether(11, Math.round(y)+12, 1);\nfor (y=0; y<=16.0; y+=0.01) {\n  x = (y-8) * (y-8)/8;\n  simulator.setether(Math.round(x)+2, Math.round(y)+4, 0);\n}";
+    var plaser2 = "if (time % 7 == 0)\n  simulator.setether(4, 12, 1);\nfor (y=0; y<=16.0; y+=0.01) {\n  x = (y-8) * (y-8)/8;\n  simulator.setether(Math.round(x)+2, Math.round(y)+4, 0);\n}";
+    var plaser3 = "simulator.v_absorber(gridY -1, 0, 0, 1);\nsimulator.v_absorber(gridY -1, 0, gridX-1, -1);\nsimulator.h_absorber(gridX-1, 0, 0, 1);\nsimulator.h_absorber(gridX-1, 0, gridY-1, -1);\nYY = 20;\nif (time % 7 == 0)\n  for (y=-8; y<=8.0; y+=1) \n    simulator.setether(11, Math.round(y)+YY, 1);\nfor (y=-12; y<=12.0; y+=0.01) {\n  x = (y) * (y)/8;\n  simulator.setether(Math.round(x)+2, Math.round(y)+YY, 0);\n}";
+    var ocean = "    simulator.initenv(\n      function (x,y) {\n        if (y<25) return 0;\n	return 0.5;\n      },\n      function (x,y) {\n        var damp = document.getElementById('damp').value;\n        if (x<50) damp=0.95\n	return damp;\n      });";
+    var plaser4 = "p=24; d=16; pX=4; pY=25; \nif (time < p*4/3) \n  simulator.setether(p+pX, pY, Math.sin(time*2/3)*8);\nif (time < p*3) \n  simulator.v_absorber(pY+d, pY-d, p+pX+1, -1);\nfor (y=-d; y<=d; y+=0.01) {\n  x = (y*y)/(4*p);\n  simulator.setether(Math.round(x)+pX, Math.round(y)+pY, 0);\n}\nsimulator.v_absorber(gridY -1, 0, 0, 1);\nsimulator.v_absorber(gridY -1, 0, gridX-1, -1);\nsimulator.h_absorber(gridX-1, 0, 0, 1);\nsimulator.h_absorber(gridX-1, 0, gridY-1, -1); ";
 
-        //render data based upon type of renderType(s) that client supplies
-        if (data.renderTypes == undefined || data.renderTypes == null) data.renderTypes = [renderType.lines];
-        for (var i = 0; i < data.renderTypes.length; i++) {
-            renderData(data.renderTypes[i]);
-        }
-    };
+    switch (kind) {
+      case "nothing" : document.getElementById("init").value = ""; document.getElementById("tick").value = ""; break;
+      case "magnets" : document.getElementById("tick").value += "\n"+magnets; break;
+      case "bounding" : document.getElementById("tick").value += "\n"+bounding; break;
+      case "oscillator" : document.getElementById("tick").value += "\n"+oscillator; break;
+      case "swamp" : document.getElementById("init").value += "\n"+swamp; break;
+      case "someclicks1" : document.getElementById("init").value += "\n"+someclicks1; break;
+      case "someclicks2" : document.getElementById("init").value += "\n"+someclicks2; break;
+      case "laser" : document.getElementById("tick").value += "\n"+laser; break;
+      case "closebox" : document.getElementById("tick").value += "\n"+closebox; break;
+      case "lens" : document.getElementById("init").value += "\n"+lens; break;
+      case "pmirror" : document.getElementById("tick").value += "\n"+pmirror; break;
+      case "plaser1" : document.getElementById("tick").value += "\n"+plaser1; break;
+      case "plaser2" : document.getElementById("tick").value += "\n"+plaser2; break;
+      case "plaser3" : document.getElementById("tick").value += "\n"+plaser3; break;
+      case "ocean" : document.getElementById("init").value += "\n"+ocean; break;
+      case "plaser4" : document.getElementById("tick").value += "\n"+plaser4; break;
+    }
+  }
 
-    var getMaxDataYValue = function () {
-        for (var i = 0; i < data.dataPoints.length; i++) {
-            if (data.dataPoints[i].y > maxYValue) maxYValue = data.dataPoints[i].y;
-        }
-    };
+  function init() {
+    eval(document.getElementById("init").value);
+    dtws.createtable('tablearea');
+  }
+  function change() {
+    pushforce = document.getElementById('pushforce').value - 0.0;
+    velocityfactor = document.getElementById('velocity').value - 0.0;
+    simulator.initenv(null, 
+      function (x,y) {
+        return document.getElementById('damp').value;
+      });
+  }
+  function simulate() {
+    
+    dtws.step(time);
+    dtws.updatetable();
+    
+    simulator.compute_O1();
+    eval(document.getElementById("tick").value);
+    simulator.swap();
+    
+    
+    e = simulator.entropy();
+    document.getElementById('entropy').value = e;
 
-    var renderBackground = function() {
-        var lingrad = ctx.createLinearGradient(margin.left, margin.top, xMax - margin.right, yMax);
-        lingrad.addColorStop(0.0, '#D4D4D4');
-        lingrad.addColorStop(0.2, '#fff');
-        lingrad.addColorStop(0.8, '#fff');
-        lingrad.addColorStop(1, '#D4D4D4');
-        ctx.fillStyle = lingrad;
-        ctx.fillRect(margin.left, margin.top, xMax - margin.left, yMax - margin.top);
-        ctx.fillStyle = 'black';
-    };
-
-    var renderText = function() {
-        var labelFont = (data.labelFont != null) ? data.labelFont : '20pt Arial';
-        ctx.font = labelFont;
-        ctx.textAlign = "center";
-
-        //Title
-        var txtSize = ctx.measureText(data.title);
-        ctx.fillText(data.title, (chartWidth / 2), (margin.top / 2));
-
-        //X-axis text
-        txtSize = ctx.measureText(data.xLabel);
-        ctx.fillText(data.xLabel, margin.left + (xMax / 2) - (txtSize.width / 2), yMax + (margin.bottom / 1.2));
-
-        //Y-axis text
-        ctx.save();
-        ctx.rotate(-Math.PI / 2);
-        ctx.font = labelFont;
-        ctx.fillText(data.yLabel, (yMax / 2) * -1, margin.left / 4);
-        ctx.restore();
-    };
-
-    var renderLinesAndLabels = function () {
-        //Vertical guide lines
-        var yInc = yMax / data.dataPoints.length;
-        var yPos = 0;
-        var yLabelInc = (maxYValue * ratio) / data.dataPoints.length;
-        var step1 = Math.ceil(data.dataPoints.length / 10); step1 = step1==0?1:step1;
-        var xInc = getXInc();
-        var xPos = margin.left;
-        for (var i = 0; i < data.dataPoints.length; i+=1) {
-            yPos += (i == 0) ? margin.top : yInc;
-            //Draw horizontal lines
-            //drawLine(margin.left, yPos, xMax, yPos, '#E8E8E8');
-
-            //y axis labels
-            ctx.font = (data.dataPointFont != null) ? data.dataPointFont : '10pt Calibri';
-            var txt = Math.round( (maxYValue - ((i == 0) ? 0 : yPos / ratio))*10 )/10;
-            var txtSize = ctx.measureText(txt);
-            if (i % step1 == 0)
-                ctx.fillText(txt, margin.left - ((txtSize.width >= 14) ? txtSize.width : 10) - 7, yPos + 4);
-
-            //x axis labels
-            txt = data.dataPoints[i].x;
-            txtSize = ctx.measureText(txt);
-            if (i % step1 == 0)
-                ctx.fillText(txt, xPos, yMax + (margin.bottom / 3));
-            xPos += xInc;
-        }
-
-        //Vertical line
-        drawLine(margin.left, margin.top, margin.left, yMax, 'black');
-
-        //Horizontal Line
-        drawLine(margin.left, yMax, xMax, yMax, 'black');
-    };
-
-    var renderData = function(type) {
-        var xInc = getXInc();
-        var prevX = 0, 
-            prevY = 0;
-
-        for (var i = 0; i < data.dataPoints.length; i++) {
-            var pt = data.dataPoints[i];
-            var ptY = (maxYValue - pt.y) * ratio;
-            if (ptY < margin.top) ptY = margin.top;
-            var ptX = (i * xInc) + margin.left;
-
-            if (i > 0 && type == renderType.lines) {
-                //Draw connecting lines
-                drawLine(ptX, ptY, prevX, prevY, 'black', 2);
-            }
-
-            if (type == renderType.points) {
-                var radgrad = ctx.createRadialGradient(ptX, ptY, 8, ptX - 5, ptY - 5, 0);
-                radgrad.addColorStop(0, 'Green');
-                radgrad.addColorStop(0.9, 'White');
-                ctx.beginPath();
-                ctx.fillStyle = radgrad;
-                //Render circle
-                ctx.arc(ptX, ptY, 8, 0, 2 * Math.PI, false)
-                ctx.fill();
-                ctx.lineWidth = 1;
-                ctx.strokeStyle = '#000';
-                ctx.stroke();
-                ctx.closePath();
-            }
-
-            prevX = ptX;
-            prevY = ptY;
-        }
-    };
-
-    var getXInc = function() {
-        return Math.round(xMax / data.dataPoints.length) - 1;
-    };
-
-    var drawLine = function(startX, startY, endX, endY, strokeStyle, lineWidth) {
-        if (strokeStyle != null) ctx.strokeStyle = strokeStyle;
-        if (lineWidth != null) ctx.lineWidth = lineWidth;
-        ctx.beginPath();
-        ctx.moveTo(startX, startY);
-        ctx.lineTo(endX, endY);
-        ctx.stroke();
-        ctx.closePath();
-    };
-
-    return {
-        renderType: renderType,
-        render: render
-    };
-} ();
-
- 
-
-
-
-
-
+    simulator.draw_O1(canvas);
+    dtws.draw(canvas, simulator);
+    dataDef.dataPoints.push({ x: time, y:  e});
+    if (document.getElementById('entropycheck').checked)
+      canvaschart.render('chart', dataDef);
+    document.getElementById('timer').value = time;
+    time += 1;
+  }
+  function reset() {
+    time=0;
+    dtws.reset();
+    dataDef.dataPoints = [{ x: 0, y: 0 }];
+    simulator.clear();
+    change();
+    init();
+    simulate()
+  }
+  function start() {
+    if (timer_id == 0) {
+      simulate();
+      timestep = document.getElementById('timestep').value;
+      timer_id = window.setInterval('simulate()', timestep);
+    }
+  }
+  function stop() {
+    if (timer_id != 0) {
+      window.clearInterval(timer_id);
+      timer_id = 0;
+    }
+  }
+  function goforward() {
+    simulate();
+  }
+  function goback() {
+    simulator.inverse();
+  }
+  reset();
+  
 function dotwave (i, x,y,w,p, vx,vy) {
   this.i = i;
   this.x = x;
   this.y = y;
-  this.w = w;
+  this.w = w*pushforce;
   this.p = p;
   this.vxi = vx;
   this.vyi = vy;
@@ -257,17 +212,21 @@ function dotwave (i, x,y,w,p, vx,vy) {
   this.bounce = function (simulator, time) {
     var x = Math.round(this.x);
     var y = Math.round(this.y);
-    if (simulator.ismax(x,y) || time == 0) {
+    //if (simulator.ismax(x,y) || time == 0) {
+    if (simulator.signchange(x,y)) {
+      a = simulator.normal(this.x,this.y);
+      //a = simulator.fastnormal(x,y);
+      this.vx = a.dx/velocityfactor;
+      this.vy = a.dy/velocityfactor;
+    }
+    //if (simulator.ismax(x,y) || time == 0) {
+    if (time % this.p == 0) {
       simulator.setether(x,y,this.w); 
       simulator.setbuffer(x,y,this.w); 
-      //simulator.simulclick(x,y,this.w); 
     }
-    //if ((time % p) == 0)
-    //  simulator.simulclick(x,y,this.w);
-    if (simulator.signchange(x,y)) {
-      a = simulator.fastnormal(x,y);
-      this.vx = this.vxi+a.dx/velocityfactor;
-      this.vy = this.vyi+a.dy/velocityfactor;
+    if (time = p) {
+      this.vx+=this.vxi/velocityfactor;
+      this.vy+=this.vyi/velocityfactor;
     }
   }
   
@@ -340,143 +299,20 @@ function dotwaves (simulator) {
       }
     }           
   }
+  
+  this.draw = function(canvas, simulator) {
+    var ctx = canvas.getContext('2d');
+    var cwidth = simulator.cellwidth(canvas);
+    var cheight = simulator.cellheight(canvas);
+    //ctx.fillStyle = 'white';
+    ctx.strokeStyle = 'white';
+    for (var i = 0; i < this.dotwaves.length; i++){
+      ctx.strokeRect(this.dotwaves[i].x*cwidth, this.dotwaves[i].y*cheight, cwidth, cheight);
+      //ctx.fillRect(this.dotwaves[i].x*cwidth, this.dotwaves[i].y*cheight, cwidth, cheight);
+    }
+  }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  var timer_id = 0;
-  var timestep = 100;
-  var size=5;
-  var pushforce = 0;
-  var velocityfactor = 1;
-  var time = 0; // time
-  
-  var canvas = document.getElementById('canvas');
-  var entropyHist = [{ x: '0', y: 0 }];
-  canvas.mozOpaque = true;
-  var gridX = (canvas.width - 1) / size;
-  var gridY = (canvas.height - 1) / size;
-  var simulator = new Simulator(gridX, gridY);
-  simulator.setclick(canvas);
-  simulator.draw(canvas);
-  var dtws = new dotwaves(simulator);
-  change(); // retrieve global value of force and damping
-  var dataDef = { title: "Entropy Chart", xLabel: 'Time', yLabel: 'Entropy', labelFont: '19pt Arial', dataPointFont: '10pt Arial',
-                renderTypes: [CanvasChart.renderType.lines],
-                dataPoints: [{ x: 0, y: 0 }]};
-
-  function preselect(kind) {
-    var magnets = "if (time % 1==0) { simulator.setvalue(36,20, pushforce);  }\nif (time % 1==0) { simulator.setvalue(10+(Math.floor(time/16))%25,5, pushforce);  }";
-    var bounding = "simulator.h_absorber(gridX -1, 0, 0, 1); \nsimulator.v_absorber(gridY -1, 0, 0, 1);";
-    var oscillator = "if (time % 1==0) { simulator.simulclick(36,5, pushforce); }\nif (time % 1==0) { simulator.simulclick(10,5, pushforce); }";
-    var swamp = document.getElementById("swamp").value;
-    var someclicks1 = "simulator.simulclick(12,2, pushforce);\nsimulator.simulclick(37,2, pushforce);\nsimulator.simulclick(25,14, pushforce);";
-    var someclicks2 = "simulator.simulclick(12,2, pushforce);\nsimulator.simulclick(37,23, pushforce);";
-    var laser = "for (var j=10; j<15; j++)  if (time % 15==0) { simulator.setether(5,j, pushforce);  }\nfor (var i=0; i < 25; i++) {  simulator.setether(i,9,0); simulator.setether(i, 15, 0);}";
-    var closebox = "simulator.v_absorber(gridY -1, 0, 0, 1);\nsimulator.v_absorber(gridY -1, 0, gridX-1, -1);\nsimulator.h_absorber(gridX-1, 0, 0, 1);\nsimulator.h_absorber(gridX-1, 0, gridY-1, -1);";
-    var lens = "for (y=0; y<16; y+=0.01) {\nx = (y-8) * (y-8)/8;\nsimulator.setether(Math.round(x)+2, Math.round(y)+10, 1);\n}";
-    var pmirror = "for (y=0; y<=16.0; y+=0.01) { x = (y-8) * (y-8)/8; simulator.setether(Math.round(x)+1, Math.round(y)+20, 0); }";
-    var plaser1 = "if (time % 7 == 0)\n  for (y=-8; y<=8.0; y+=1) \n    simulator.setether(11, Math.round(y)+12, 1);\nfor (y=0; y<=16.0; y+=0.01) {\n  x = (y-8) * (y-8)/8;\n  simulator.setether(Math.round(x)+2, Math.round(y)+4, 0);\n}";
-    var plaser2 = "if (time % 7 == 0)\n  simulator.setether(4, 12, 1);\nfor (y=0; y<=16.0; y+=0.01) {\n  x = (y-8) * (y-8)/8;\n  simulator.setether(Math.round(x)+2, Math.round(y)+4, 0);\n}";
-    var plaser3 = "simulator.v_absorber(gridY -1, 0, 0, 1);\nsimulator.v_absorber(gridY -1, 0, gridX-1, -1);\nsimulator.h_absorber(gridX-1, 0, 0, 1);\nsimulator.h_absorber(gridX-1, 0, gridY-1, -1);\nYY = 20;\nif (time % 7 == 0)\n  for (y=-8; y<=8.0; y+=1) \n    simulator.setether(11, Math.round(y)+YY, 1);\nfor (y=-12; y<=12.0; y+=0.01) {\n  x = (y) * (y)/8;\n  simulator.setether(Math.round(x)+2, Math.round(y)+YY, 0);\n}";
-    var ocean = "    simulator.initenv(\n      function (x,y) {\n        if (y<25) return 0;\n	return 0.5;\n      },\n      function (x,y) {\n        var damp = document.getElementById('damp').value;\n        if (x<50) damp=0.95\n	return damp;\n      });";
-    var plaser4 = "p=24; d=16; pX=4; pY=25; \nif (time < p*4/3) \n  simulator.setether(p+pX, pY, Math.sin(time*2/3)*8);\nif (time < p*3) \n  simulator.v_absorber(pY+d, pY-d, p+pX+1, -1);\nfor (y=-d; y<=d; y+=0.01) {\n  x = (y*y)/(4*p);\n  simulator.setether(Math.round(x)+pX, Math.round(y)+pY, 0);\n}\nsimulator.v_absorber(gridY -1, 0, 0, 1);\nsimulator.v_absorber(gridY -1, 0, gridX-1, -1);\nsimulator.h_absorber(gridX-1, 0, 0, 1);\nsimulator.h_absorber(gridX-1, 0, gridY-1, -1); ";
-
-    switch (kind) {
-      case "nothing" : document.getElementById("init").value = ""; document.getElementById("tick").value = ""; break;
-      case "magnets" : document.getElementById("tick").value += "\n"+magnets; break;
-      case "bounding" : document.getElementById("tick").value += "\n"+bounding; break;
-      case "oscillator" : document.getElementById("tick").value += "\n"+oscillator; break;
-      case "swamp" : document.getElementById("init").value += "\n"+swamp; break;
-      case "someclicks1" : document.getElementById("init").value += "\n"+someclicks1; break;
-      case "someclicks2" : document.getElementById("init").value += "\n"+someclicks2; break;
-      case "laser" : document.getElementById("tick").value += "\n"+laser; break;
-      case "closebox" : document.getElementById("tick").value += "\n"+closebox; break;
-      case "lens" : document.getElementById("init").value += "\n"+lens; break;
-      case "pmirror" : document.getElementById("tick").value += "\n"+pmirror; break;
-      case "plaser1" : document.getElementById("tick").value += "\n"+plaser1; break;
-      case "plaser2" : document.getElementById("tick").value += "\n"+plaser2; break;
-      case "plaser3" : document.getElementById("tick").value += "\n"+plaser3; break;
-      case "ocean" : document.getElementById("init").value += "\n"+ocean; break;
-      case "plaser4" : document.getElementById("tick").value += "\n"+plaser4; break;
-    }
-  }
-  function init() {
-    eval(document.getElementById("init").value);
-    dtws.createtable('tablearea');
-  }
-  function change() {
-    pushforce = document.getElementById('pushforce').value - 0.0;
-    velocityfactor = document.getElementById('velocity').value - 0.0;
-    simulator.initenv(null, 
-      function (x,y) {
-        return document.getElementById('damp').value;
-      });
-  }
-  function simulate() {
-    
-    dtws.step(time);
-    dtws.updatetable();
-    
-    simulator.compute_O1();
-    eval(document.getElementById("tick").value);
-    simulator.swap();
-    
-    
-    e = simulator.entropy();
-    document.getElementById('entropy').value = e;
-    time += 1;
-    //entropyHist.push({ x: time, y:  e});
-
-    simulator.draw_O1(canvas);
-    dataDef.dataPoints.push({ x: time, y:  e});
-    //if (time % timestep == 0) {
-      if (document.getElementById('entropycheck').checked)
-        CanvasChart.render('chart', dataDef);
-    //}    
-  }
-  function reset() {
-    time=0;
-    dtws.reset();
-    dataDef.dataPoints = [{ x: 0, y: 0 }];
-    simulator.clear();
-    change();
-    init();
-    simulate()
-  }
-  function start() {
-    if (timer_id == 0) {
-      simulate();
-      timestep = document.getElementById('timestep').value;
-      timer_id = window.setInterval('simulate()', timestep);
-    }
-  }
-  function stop() {
-    if (timer_id != 0) {
-      window.clearInterval(timer_id);
-      timer_id = 0;
-    }
-  }
-  function step() {
-    simulate();
-  }
-  function goback() {
-    simulator.inverse();
-  }
-  reset();7
-  
   
   
 
@@ -637,7 +473,15 @@ function Simulator(width, height) {
     return (this.buffer[ofs+1] + this.buffer[ofs+width] + this.buffer[ofs-1] + this.buffer[ofs-width])/4.0;
   }
   
-  this.fastnormal = function(x,y) {
+  this.normal = function(x,y) { // assume x & y real
+    var rx = Math.round(x); var px=x-rx;
+    var ry = Math.round(y); var py=y-ry;
+    var n = this.fastnormal(rx,ry);
+    var n1 = this.fastnormal(rx+1, ry+1);
+    return {dx: (n.dx*1 + n1.dx*px)/(1+px), dy : (n.dy*1 + n1.dy*py)/(1+py) };
+  }
+  
+  this.fastnormal = function(x,y) { // assume x & y int
     dx = this.getether(x-1, y+1)-this.getether(x+1, y+1) + 2*(this.getether(x-1, y)-this.getether(x+1, y)) + this.getether(x-1, y-1)-this.getether(x+1, y-1);
     dy = this.getether(x-1, y-1)-this.getether(x-1, y+1) + 2*(this.getether(x, y-1)-this.getether(x, y+1)) + this.getether(x+1, y-1)-this.getether(x+1, y+1);
     return {dx: dx, dy: dy};
@@ -712,6 +556,170 @@ function Simulator(width, height) {
 }
 
 
+
+
+function CanvasChart() {
+    var ctx;
+    var margin = { top: 40, left: 75, right: 0, bottom: 75 };
+    var chartHeight, chartWidth, yMax, xMax, data;
+    var maxYValue = 0;
+    var ratio = 0;
+    var renderType = { lines: 'lines', points: 'points' };
+
+    var render = function(canvasId, dataObj) {
+        data = dataObj;
+        getMaxDataYValue();
+        var canvas = document.getElementById(canvasId);
+        chartHeight = canvas.getAttribute('height');
+        chartWidth = canvas.getAttribute('width');
+        xMax = chartWidth - (margin.left + margin.right);
+        yMax = chartHeight - (margin.top + margin.bottom);
+        ratio = yMax / maxYValue;
+        ctx = canvas.getContext("2d");
+        ctx.clearRect ( 0 , 0 , canvas.width, canvas.height );
+        renderChart();
+    };
+
+    var renderChart = function () {
+        renderBackground();
+        renderText();
+        renderLinesAndLabels();
+
+        //render data based upon type of renderType(s) that client supplies
+        if (data.renderTypes == undefined || data.renderTypes == null) data.renderTypes = [renderType.lines];
+        for (var i = 0; i < data.renderTypes.length; i++) {
+            renderData(data.renderTypes[i]);
+        }
+    };
+
+    var getMaxDataYValue = function () {
+        for (var i = 0; i < data.dataPoints.length; i++) {
+            if (data.dataPoints[i].y > maxYValue) maxYValue = data.dataPoints[i].y;
+        }
+    };
+
+    var renderBackground = function() {
+        var lingrad = ctx.createLinearGradient(margin.left, margin.top, xMax - margin.right, yMax);
+        lingrad.addColorStop(0.0, '#D4D4D4');
+        lingrad.addColorStop(0.2, '#fff');
+        lingrad.addColorStop(0.8, '#fff');
+        lingrad.addColorStop(1, '#D4D4D4');
+        ctx.fillStyle = lingrad;
+        ctx.fillRect(margin.left, margin.top, xMax - margin.left, yMax - margin.top);
+        ctx.fillStyle = 'black';
+    };
+
+    var renderText = function() {
+        var labelFont = (data.labelFont != null) ? data.labelFont : '20pt Arial';
+        ctx.font = labelFont;
+        ctx.textAlign = "center";
+
+        //Title
+        var txtSize = ctx.measureText(data.title);
+        ctx.fillText(data.title, (chartWidth / 2), (margin.top / 2));
+
+        //X-axis text
+        txtSize = ctx.measureText(data.xLabel);
+        ctx.fillText(data.xLabel, margin.left + (xMax / 2) - (txtSize.width / 2), yMax + (margin.bottom / 1.2));
+
+        //Y-axis text
+        ctx.save();
+        ctx.rotate(-Math.PI / 2);
+        ctx.font = labelFont;
+        ctx.fillText(data.yLabel, (yMax / 2) * -1, margin.left / 4);
+        ctx.restore();
+    };
+
+    var renderLinesAndLabels = function () {
+        //Vertical guide lines
+        var yInc = yMax / data.dataPoints.length;
+        var yPos = 0;
+        var yLabelInc = (maxYValue * ratio) / data.dataPoints.length;
+        var step1 = Math.ceil(data.dataPoints.length / 10); step1 = step1==0?1:step1;
+        var xInc = getXInc();
+        var xPos = margin.left;
+        for (var i = 0; i < data.dataPoints.length; i+=1) {
+            yPos += (i == 0) ? margin.top : yInc;
+            //Draw horizontal lines
+            //drawLine(margin.left, yPos, xMax, yPos, '#E8E8E8');
+
+            //y axis labels
+            ctx.font = (data.dataPointFont != null) ? data.dataPointFont : '10pt Calibri';
+            var txt = Math.round( (maxYValue - ((i == 0) ? 0 : yPos / ratio))*10 )/10;
+            var txtSize = ctx.measureText(txt);
+            if (i % step1 == 0)
+                ctx.fillText(txt, margin.left - ((txtSize.width >= 14) ? txtSize.width : 10) - 7, yPos + 4);
+
+            //x axis labels
+            txt = data.dataPoints[i].x;
+            txtSize = ctx.measureText(txt);
+            if (i % step1 == 0)
+                ctx.fillText(txt, xPos, yMax + (margin.bottom / 3));
+            xPos += xInc;
+        }
+
+        //Vertical line
+        drawLine(margin.left, margin.top, margin.left, yMax, 'black');
+
+        //Horizontal Line
+        drawLine(margin.left, yMax, xMax, yMax, 'black');
+    };
+
+    var renderData = function(type) {
+        var xInc = getXInc();
+        var prevX = 0, 
+            prevY = 0;
+
+        for (var i = 0; i < data.dataPoints.length; i++) {
+            var pt = data.dataPoints[i];
+            var ptY = (maxYValue - pt.y) * ratio;
+            if (ptY < margin.top) ptY = margin.top;
+            var ptX = (i * xInc) + margin.left;
+
+            if (i > 0 && type == renderType.lines) {
+                //Draw connecting lines
+                drawLine(ptX, ptY, prevX, prevY, 'black', 2);
+            }
+
+            if (type == renderType.points) {
+                var radgrad = ctx.createRadialGradient(ptX, ptY, 8, ptX - 5, ptY - 5, 0);
+                radgrad.addColorStop(0, 'Green');
+                radgrad.addColorStop(0.9, 'White');
+                ctx.beginPath();
+                ctx.fillStyle = radgrad;
+                //Render circle
+                ctx.arc(ptX, ptY, 8, 0, 2 * Math.PI, false)
+                ctx.fill();
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = '#000';
+                ctx.stroke();
+                ctx.closePath();
+            }
+
+            prevX = ptX;
+            prevY = ptY;
+        }
+    };
+
+    var getXInc = function() {
+        return Math.round(xMax / data.dataPoints.length) - 1;
+    };
+
+    var drawLine = function(startX, startY, endX, endY, strokeStyle, lineWidth) {
+        if (strokeStyle != null) ctx.strokeStyle = strokeStyle;
+        if (lineWidth != null) ctx.lineWidth = lineWidth;
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+        ctx.closePath();
+    };
+
+    return {
+        renderType: renderType,
+        render: render
+    };
+};
 
 //-->
 </script>
