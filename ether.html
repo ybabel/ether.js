@@ -43,8 +43,8 @@ Timer :  <input id="timer" value="0" size="3">
       });
   </textarea>
   <textarea id="init" cols="50" rows="5">
-dtws.add(15,15, 1, 4, 0.5,0);
-dtws.add(25,19, 1, 4, -0.5,0);
+dtws.add(15,15, 1, 4,  0.5,0, 0);
+dtws.add(25,20, 1, 4, -0.5,0, 2);
   </textarea>
   Each step :
   <textarea id="tick" cols="50" rows="5">
@@ -191,17 +191,18 @@ dtws.add(25,19, 1, 4, -0.5,0);
   }
   reset();
   
-function dotwave (i, x,y,w,p, vx,vy) {
+function dotwave (i, x,y,w,p, vx,vy, d) {
   this.i = i;
   this.x = x;
-  this.y = y;
-  this.w = w*pushforce;
-  this.p = p;
+  this.y = y; 
+  this.w = w*pushforce; // de combien on stimule l'éther
+  this.p = p; // période : tous les "p" le rebond transfère de l'énergie a l'ether
+  this.d = d; // intruduction d'un déphasage
   this.vxi = vx;
   this.vyi = vy;
   this.vx = 0;
   this.vy = 0;
-  this.gp = 0;
+  this.gp = 0; // compteur de temps pour mesurer la période des rebonds "naturels"
   this.lastime = 0;
   
   this.move = function() {
@@ -220,11 +221,11 @@ function dotwave (i, x,y,w,p, vx,vy) {
       this.vy = a.dy/velocityfactor;
     }
     //if (simulator.ismax(x,y) || time == 0) {
-    if (time % this.p == 0) {
+    if ( (time-this.d) % this.p == 0) {
       simulator.setether(x,y,this.w); 
       simulator.setbuffer(x,y,this.w); 
     }
-    if (time = p) {
+    if (time == 0) {
       this.vx+=this.vxi/velocityfactor;
       this.vy+=this.vyi/velocityfactor;
     }
@@ -259,8 +260,8 @@ function dotwaves (simulator) {
     }
   }
   
-  this.add = function(x,y,w,p, vx,vy) {
-    this.dotwaves.push(new dotwave(this.dotwaves.length, x,y,w,p,vx,vy));
+  this.add = function(x,y,w,p, vx,vy, d) {
+    this.dotwaves.push(new dotwave(this.dotwaves.length, x,y,w,p,vx,vy, d));
   }
   
   this.createtable = function(id) {
