@@ -248,22 +248,10 @@ var CanvasChart = function () {
     };
 } ();
 
- 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+//Grayscott reaction diffusion, inspired from https://github.com/udion/ReactionDiffusion/
+// http://www.algosome.com/articles/reaction-diffusion-gray-scott.html
+// http://www.karlsims.com/rd.html
 
 
 
@@ -597,6 +585,7 @@ function Simulator(width, height) {
     return (this.getbuffer(x+1, y) + this.getbuffer(x, y+1) + this.getbuffer(x-1, y) + this.getbuffer(x, y-1))/4.0;
   }
   
+  //do not work with only 4 neighboor !!
   this.ether_neighboorA = function(x, y) {
     return (this.getetherA(x+1, y) + this.getetherA(x, y+1) + this.getetherA(x-1, y) + this.getetherA(x, y-1))*0.20 +
       (this.getetherA(x+1, y+1) + this.getetherA(x+1, y-1) + this.getetherA(x-1, y+1) + this.getetherA(x-1, y-1))*0.05;
