@@ -8,7 +8,17 @@
 <div align="center">
 Parabolic mirror generate planar wave (laser)
   <br clear="all">
-  TimeStep : <input id="timestep" value="100" onchange="stop(); start();"  size="5"> Damp : <input id="damp" value="0.95" onchange="change();"  size="5"> PushForce : <input id="push" value="16.0" onchange="change();" size="5">Preselected :<select onchange="preselect(this.value);">
+  TimeStep (1-n): <input id="timestep" value="100" onchange="stop(); start();"  size="5"> 
+  Damp (0-1.0): <input id="damp" value="0.95" onchange="change();"  size="5"> 
+  PushForce (deformation when clicking 0.1-64): <input id="push" value="16.0" onchange="change();" size="5">
+
+  <br>Reaction Diffusion: <input id="grayscott" type="checkbox"> 
+  Kill (0-1.0): <input id="kill" value="0.062" onchange="change();" size="5">
+  Feed (0-1.0): <input id="feed" value="0.055" onchange="change();" size="5"> 
+  Diffusion rate A (0-1.0): <input id="dra" value="1.0" onchange="change();" size="5">
+  Diffusion rate B (0-1.0): <input id="drb" value="0.5" onchange="change();" size="5">
+
+  <br>Preselected :<select onchange="preselect(this.value);">
   <option value="nothing"> Nothing </option>
   <option value="magnets"> Tick : 2 Magnets </option>
   <option value="bounding"> Tick : Bouding borders </option>
@@ -25,7 +35,7 @@ Parabolic mirror generate planar wave (laser)
   <option value="plaser3"> Tick : Parabolic Laser generator 3 </option>
   <option value="ocean"> Init : Ocean with 4 regions </option>
 </select>
-Entropy : <input id="entropy" value="0.0" size="5">
+Entropy (0-7.0): <input id="entropy" value="0.0" size="5">
 <br/>Init :
   <textarea id="swamp" type="hidden" style="display: none;">
     simulator.initenv(
@@ -45,7 +55,7 @@ Entropy : <input id="entropy" value="0.0" size="5">
   <textarea id="tick" cols="100" rows="5">
 p=24; d=16; pX=4; pY=25;
 if (time < p*4/3) 
-  simulator.setether(p+pX, pY, Math.sin(time*2/3)*8);
+  simulator.push(p+pX, pY, Math.sin(time*2/3)*8);
 if (time < p*3) 
   simulator.v_absorber(pY+d, pY-d, p+pX+1, -1);
 for (y=-d; y<=d; y+=0.01) {
@@ -73,7 +83,7 @@ simulator.h_absorber(gridX-1, 0, gridY-1, -1);
 </div>
 
 <script type="text/javascript">
-<!--
+
 // CANVAS CHART
 var CanvasChart = function () {
     var ctx;
@@ -265,9 +275,12 @@ var CanvasChart = function () {
   var size=5;
   var force = 0;
   var time = 0; // time
+  //grayscott
+  var kill,feed,dra,drb = 0.0;
+  var grayscott=false;
   
   var canvas = document.getElementById('canvas');
-  var entropyHist = [{ x: '0', y: 0 }];
+  var entropyHist = [{ x: 0, y: 0 }];
   canvas.mozOpaque = true;
   var gridX = (canvas.width - 1) / size;
   var gridY = (canvas.height - 1) / size;
@@ -275,14 +288,10 @@ var CanvasChart = function () {
   simulator.setclick(canvas);
   simulator.draw(canvas);
   change(); // retrieve global value of force and damping
-             var dataDef = { title: "Entropy Chart",
-                            xLabel: 'Time', 
-                            yLabel: 'Entropy',
-                            labelFont: '19pt Arial', 
-                            dataPointFont: '10pt Arial',
-                            renderTypes: [CanvasChart.renderType.lines],
-                            dataPoints: [{ x: 0, y: 0 }]
-                           };
+  var dataDef = { title: "Entropy Chart", xLabel: 'Time', 
+    yLabel: 'Entropy', labelFont: '19pt Arial', dataPointFont: 
+    '10pt Arial', renderTypes: [CanvasChart.renderType.lines], 
+    dataPoints: [{ x: 0, y: 0 }] };
   
 
 
@@ -325,13 +334,24 @@ var CanvasChart = function () {
   }
   function change() {
     force = document.getElementById('push').value - 0.0;
+    //grayscott
+    kill = document.getElementById('kill').value - 0.0;
+    feed = document.getElementById('feed').value - 0.0;
+    dra = document.getElementById('dra').value - 0.0;
+    drb = document.getElementById('drb').value - 0.0;
+
+
     simulator.initenv(null, 
       function (x,y) {
 	return document.getElementById('damp').value;
       });
   }
   function simulate() {
-    simulator.compute_O1();
+	  
+	if (! document.getElementById('grayscott').checked) 
+       simulator.compute_O1();
+    else 
+       simulator.grayscott(kill, feed, dra, drb);
     eval(document.getElementById("tick").value);
     simulator.swap();
     
@@ -339,9 +359,10 @@ var CanvasChart = function () {
     e = simulator.entropy();
     document.getElementById('entropy').value = e;
     time += 1;
-    //entropyHist.push({ x: time, y:  e});
+    entropyHist.push({ x: time, y:  e});
 
-    simulator.draw_O1(canvas);
+    //simulator.draw_O1(canvas);
+    simulator.draw(canvas);
     dataDef.dataPoints.push({ x: time, y:  e});
     if (time % timestep == 0)
       CanvasChart.render('chart', dataDef);
@@ -380,6 +401,11 @@ function Simulator(width, height) {
   this.fluid = new Array(width * height);
   this.ether = new Array(width * height);
   this.buffer = new Array(width * height);
+  //grayscott
+  this.etherA = new Array(width * height);
+  this.bufferA = new Array(width * height);
+  this.etherB = new Array(width * height);
+  this.bufferB = new Array(width * height);
 
   this.getdamp = function (x, y) {
     return (x >= 0 && x < width && y >= 0 && y < height)
@@ -391,20 +417,22 @@ function Simulator(width, height) {
       ? this.fluid[y * width + x] : 0.0;
   }
 
-  this.getbuffer = function (x, y) {
-    return (x >= 0 && x < width && y >= 0 && y < height)
-      ? this.buffer[y * width + x] : 0.0;
-  }
-
-  this.getether = function (x, y) {
-    return (x >= 0 && x < width && y >= 0 && y < height)
-      ? this.ether[y * width + x] : 0.0;
-  }
-
+  this.getbuffer = function (x, y) {    return (x >= 0 && x < width && y >= 0 && y < height) ? this.buffer[y * width + x] : 0.0; }
+  this.getether = function (x, y) {    return (x >= 0 && x < width && y >= 0 && y < height) ? this.ether[y * width + x] : 0.0; }
   this.setether = function (x, y, value) { return this.ether[y * width + x] = value; }
   this.setbuffer = function (x, y, value) { return this.buffer[y * width + x] = value; }
   this.setdamp = function (x, y, value) { return this.damp[y * width + x] = value; }
   this.setfluid = function (x, y, value) { return this.fluid[y * width + x] = value; }
+  //grayscott
+  this.getbufferA = function (x, y) {    return (x >= 0 && x < width && y >= 0 && y < height) ? this.bufferA[y * width + x] : 0.0; }
+  this.getetherA = function (x, y) {    return (x >= 0 && x < width && y >= 0 && y < height) ? this.etherA[y * width + x] : 0.0; }
+  this.setetherA = function (x, y, value) { return this.etherA[y * width + x] = value; }
+  this.setbufferA = function (x, y, value) { return this.bufferA[y * width + x] = value; }
+  this.getbufferB = function (x, y) {    return (x >= 0 && x < width && y >= 0 && y < height) ? this.bufferB[y * width + x] : 0.0; }
+  this.getetherB = function (x, y) {    return (x >= 0 && x < width && y >= 0 && y < height) ? this.etherB[y * width + x] : 0.0; }
+  this.setetherB = function (x, y, value) { return this.etherB[y * width + x] = value; }
+  this.setbufferB = function (x, y, value) { return this.bufferB[y * width + x] = value; }
+
 
   this.initenv = function (getfluid, getdamp) { 
     for (var y = height - 1; y >= 0; y--) {
@@ -418,17 +446,41 @@ function Simulator(width, height) {
   this.clear = function () {
     for (var offset = this.ether.length - 1; offset >= 0; offset--) {
       this.ether[offset] = 0.0;
+      this.etherA[offset] = Math.random();
+      this.etherB[offset] = 0.0; //Math.random();
       this.fluid[offset] = 0.0;
       this.damp[offset] = 1.0;
       this.buffer[offset] = 0.0;
+      this.bufferA[offset] = 0.0;
+      this.bufferB[offset] = 0.0;
     }
+  }
+
+  this.push = function (x,y,v) {
+	this.setether(x,x,v);
+	this.setetherB(x,y,v/16);
+  }
+
+
+  this.grayscott = function(kill, feed, dra, drb) {
+    for (var y = height - 1; y >= 0; y--) {
+      for (var x = width - 1; x >= 0; x--) {
+	     A = this.getetherA(x,y); B = this.getetherB(x,y);
+	     laplacianA = (this.ether_neighboorA(x,y)-A);
+	     laplacianB = (this.ether_neighboorB(x,y)-B);
+	     ABB = A*B*B;
+	     dA = dra*laplacianA - ABB + feed*(1.0-A);
+	     dB = drb*laplacianB + ABB - (kill+feed)*B;
+	     this.setbufferA(x,y, A+dA); this.setbufferB(x,y,B+dB);
+      }
+    }	  
   }
 
   this.compute = function()   {
     for (var y = height - 1; y >= 0; y--) {
       for (var x = width - 1; x >= 0; x--) {
         var f = this.getfluid(x,y);
-	var d = this.getdamp(x,y);
+	    var d = this.getdamp(x,y);
         var v = ( this.buffer_neighboor(x, y) * (2.0-f) - (1.0-f)*this.getether(x,y) ) *d;
         this.setether(x,y, v)
       }
@@ -440,7 +492,7 @@ function Simulator(width, height) {
       for (var x = width - 1; x >= 0; x--) {
         var ofs = x+y*width;
         var f = this.fluid[ofs];
-	var d = this.damp[ofs];
+	    var d = this.damp[ofs];
         var v = ( this.buffer_neighboor_O1(ofs, x, y) * (2.0-f) - (1.0-f)*this.ether[ofs] ) *d;
         this.ether[ofs] = v;
       }
@@ -469,6 +521,14 @@ function Simulator(width, height) {
     var tmp = this.buffer;
     this.buffer = this.ether;
     this.ether = tmp;
+
+    var tmpA = this.bufferA;
+    this.bufferA = this.etherA;
+    this.etherA = tmpA;
+
+    var tmpB = this.bufferB;
+    this.bufferB = this.etherB;
+    this.etherB = tmpB;
   }
 
   this.cellwidth = function (canvas) { return Math.floor(canvas.width / width); }
@@ -477,6 +537,13 @@ function Simulator(width, height) {
   this.getcolor = function (x,y) {
     var v = this.getether(x,y);
     return v>0 ? "rgb("+Math.floor(v*255)+",0,0)" : "rgb(0,0,"+Math.floor(v*-255)+")";
+  }
+
+  this.getcolorGrayscott = function (x,y) {
+    var a = this.getetherA(x,y);
+    var b = this.getetherB(x,y);
+    //return "rgb("+Math.floor(Math.abs(a)*255)+","+Math.floor(Math.abs(b)*255)+",0)";
+    return "rgb("+Math.floor(Math.abs(a-b)*255)+",0,0)";
   }
 
   this.draw = function (canvas, draw_grid) {
@@ -488,11 +555,14 @@ function Simulator(width, height) {
     for (var y = height - 1; y >= 0; y--) {
       var offset = y * width;
       for (var x = width - 1; x >= 0; x--) {
-	  if (Math.abs(this.getether(x,y)) < 0.1)
+        if (! document.getElementById('grayscott').checked) {
+          if (Math.abs(this.getether(x,y)) < 0.1)
             ctx.fillStyle = "rgb(0,"+Math.floor(this.getdamp(x,y)*64)+","+Math.floor(this.getfluid(x,y)*64)+")";
-	  else
+	      else
             ctx.fillStyle = this.getcolor(x,y);
-          ctx.fillRect(x * cwidth, y * cheight, cwidth, cheight);
+        } else 
+          ctx.fillStyle = this.getcolorGrayscott(x,y);
+        ctx.fillRect(x * cwidth, y * cheight, cwidth, cheight);
       }
     }
     if (draw_grid) {
@@ -526,6 +596,16 @@ function Simulator(width, height) {
   this.buffer_neighboor = function(x, y) {
     return (this.getbuffer(x+1, y) + this.getbuffer(x, y+1) + this.getbuffer(x-1, y) + this.getbuffer(x, y-1))/4.0;
   }
+  
+  this.ether_neighboorA = function(x, y) {
+    return (this.getetherA(x+1, y) + this.getetherA(x, y+1) + this.getetherA(x-1, y) + this.getetherA(x, y-1))*0.20 +
+      (this.getetherA(x+1, y+1) + this.getetherA(x+1, y-1) + this.getetherA(x-1, y+1) + this.getetherA(x-1, y-1))*0.05;
+  }
+  
+  this.ether_neighboorB = function(x, y) {
+    return (this.getetherB(x+1, y) + this.getetherB(x, y+1) + this.getetherB(x-1, y) + this.getetherB(x, y-1))*0.20 +
+      (this.getetherB(x+1, y+1) + this.getetherB(x+1, y-1) + this.getetherB(x-1, y+1) + this.getetherB(x-1, y-1))*0.05;
+  }    
 
   this.buffer_neighboor_O1 = function(ofs, x, y) {
     if (x==0 || y==0 || x==width-1 || y==height-1) return this.buffer_neighboor(x, y);
@@ -537,6 +617,8 @@ function Simulator(width, height) {
     this.setether(x,y, v);
     var v = c-this.getbuffer(x,y);
     this.setbuffer(x,y, v);
+    //grayscott
+    this.setetherB(x,y, 1.0);
   }
 
   this.setvalue = function(x, y, v) {
